@@ -1,0 +1,10 @@
+#!/bin/sh
+# Hook de Git: revisa secretos ANTES de cada commit, para que nada entre al historial.
+# Un secreto que llega a un commit queda en el historial aunque luego se borre
+# (NIST SSDF PS.1). Activarlo una vez, dentro de la carpeta del proyecto:
+#     git config core.hooksPath hooks
+# Requiere el entorno virtual activo (detect-secrets instalado).
+python revisar_secretos.py || {
+  echo "Commit cancelado: revisa los posibles secretos de arriba."
+  exit 1
+}

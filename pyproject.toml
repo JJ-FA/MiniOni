@@ -1,0 +1,7 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.bandit]
+# Las pruebas usan `assert` a propósito; se analiza solo el código del programa.
+exclude_dirs = ["tests", ".venv"]

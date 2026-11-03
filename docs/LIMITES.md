@@ -1,0 +1,141 @@
+# Límites conocidos de MiniOni
+
+> Una herramienta madura declara qué NO protege. Los límites conocidos son
+> parte de la seguridad, no una debilidad.
+
+## Lo que MiniOni NO protege
+
+1. **No es un navegador.** Se usa Firefox o LibreWolf configurado con el
+   proxy. MiniOni no protege contra la huella digital del navegador
+   (fingerprinting), cookies, ni contra lo que el usuario escriba en un sitio.
+2. **Adversario global.** Quien observe a la vez la entrada y la salida
+   puede correlacionar tiempos y volúmenes. MiniOni no agrega tráfico de
+   cobertura ni retrasos.
+3. **Nodo de salida.** Ve el destino y, si el sitio no usa HTTPS, también el
+   contenido. Solo se permiten los puertos 80 y 443.
+4. **Posición del salto.** La longitud de cada capa revela si un relay es
+   entrada, intermedio o salida. Igual que en Tor, se considera aceptable:
+   la posición no identifica al usuario.
+5. **Tramo navegador → proxy.** Va sin cifrar por `127.0.0.1`. Nunca sale del
+   equipo, pero un programa malicioso en ese mismo equipo podría leerlo.
+6. **Pocos relays.** Con 3 nodos en laboratorio, todos los circuitos usan
+   los mismos relays. El anonimato real exige muchos operadores independientes.
+7. **No es compatible con Tor** ni ofrece servicios ocultos (`.onion`).
+   No está pensado para Internet pública ni para producción.
+
+## Decisiones de privacidad documentadas
+
+- **Sin logs persistentes.** No se registran IP, destinos ni contenido.
+  Solo se imprimen en consola eventos de un catálogo cerrado
+  (`minioni/consola.py`). Se acepta perder trazabilidad forense a cambio de
+  no crear un registro que desanonimice a los usuarios (ASVS V16, V16.2.5).
+- **Claves en memoria.** Python no permite borrar con garantía la memoria de
+  las claves de circuito; se descartan las referencias al cerrar, pero
+  pueden quedar copias hasta que el recolector de basura las libere.
+
+- **Panel gráfico.** El registro de la ventana muestra solo los eventos del
+  catálogo de `consola.py` (vía `consola.suscribir`), en memoria y hasta 500
+  líneas; no se guarda en disco. La contraseña se borra del campo en cuanto
+  se usa y no se guarda; como cualquier cadena de Python puede quedar en
+  memoria hasta que el recolector la libere. «Abrir por MiniOni» descarga
+  como máximo 5 MB y no muestra el contenido, solo el código HTTP y el tamaño.
+
+- **Alcance de «Verificar sin registros».** El audit hook ve todo lo que
+  hace Python en el proceso de MiniOni (relays, proxy y panel), pero no lo
+  que Windows hace por su cuenta: la caché DNS del sistema guarda el dominio
+  (no la búsqueda) que resolvió el nodo de salida, y el archivo de
+  paginación queda fuera de control. Se ignoran las escrituras de `.pyc`
+  (caché de código de Python, sin datos del usuario). El testigo se muestra
+  en pantalla para comprobarlo con `findstr`, pero no se guarda.
+
+- **Certificados en las pruebas del panel.** Si OpenSSL no encuentra la raíz
+  en el almacén de Windows, se usa el verificador de Windows, que puede
+  descargar la raíz desde la lista oficial de Microsoft (lo mismo que pasa al
+  abrir el sitio en Edge). No se comprueba revocación (CRL/OCSP), igual que
+  en la verificación por defecto de Python. Cualquier otro rechazo
+  (vencido, autofirmado, nombre distinto) se respeta y la prueba falla.
+
+## Decisiones de la red (semana 2)
+
+- **Un relay no autentica a quien se le conecta.** Clientes y relays entran
+  igual por el mismo puerto TLS. Es necesario para no identificar al
+  cliente, pero significa que cualquiera que alcance el puerto puede abrir
+  circuitos. Lo contienen los límites: 8 conexiones simultáneas por IP, 16
+  circuitos por enlace, 256 circuitos por relay y los tiempos máximos.
+- **El límite por enlace también aplica entre relays.** Todos los circuitos
+  que pasan de un relay a otro comparten un único enlace TLS, así que entre
+  cada par de relays caben a lo sumo 16 circuitos simultáneos. Para un
+  laboratorio basta (el proxy usa un circuito activo a la vez).
+- **IP de origen en memoria.** Para aplicar el límite por IP, el relay
+  cuenta las conexiones abiertas de cada IP. El dato vive solo en memoria y
+  solo mientras la conexión está abierta; nunca se imprime ni se guarda.
+- **TLS sin CA.** La confianza en el certificado de cada relay viene solo del
+  directorio firmado (pinning de la huella). Si la autoridad publica una
+  huella equivocada, el relay es inalcanzable (falla cerrado).
+
+## Decisiones del nodo de salida y del proxy (semana 3)
+
+- **DNS remoto obligatorio.** El proxy nunca resuelve nombres: el dominio
+  viaja dentro del circuito y lo resuelve el nodo de salida. Por eso en
+  Firefox hay que marcar "Usar proxy DNS cuando se use SOCKS v5"
+  (`network.proxy.socks_remote_dns = true`); si no, el navegador consultaría
+  el DNS local y el administrador de la red vería los dominios visitados.
+  Ver [NAVEGADOR.md](NAVEGADOR.md).
+- **WebRTC.** Puede abrir conexiones UDP fuera del proxy y revelar la IP real.
+  MiniOni solo transporta TCP por SOCKS5 CONNECT; hay que desactivar WebRTC
+  (`media.peerconnection.enabled = false`).
+- **Huella del navegador (fingerprinting).** Fuentes, resolución, zona
+  horaria, cookies y extensiones identifican al navegador aunque la IP
+  cambie. MiniOni no lo protege; un navegador endurecido (LibreWolf, o el
+  modo de resistencia al fingerprinting de Firefox) lo reduce.
+- **Un solo computador no da anonimato real.** Con los 3 relays y el
+  navegador en el mismo equipo, quien vea ese equipo ve todo. Es una
+  demostración del mecanismo (capas, TLS, fallo cerrado), no anonimato.
+- **Solo TCP y solo CONNECT.** No hay UDP (UDP ASSOCIATE) ni BIND: `05 07`.
+  QUIC/HTTP3 no funciona; el navegador vuelve a HTTP/2 sobre TCP.
+- **Política de salida.** Por defecto solo los puertos 80 y 443 hacia IP
+  públicas (`config/politica_salida.json`, sin excepciones). Cada excepción
+  que se agregue debe documentarse aquí. Las pruebas automáticas usan una
+  excepción `127.0.0.0/8` y un puerto aleatorio **solo en la configuración de
+  la prueba**, para alcanzar un servidor HTTP local; el archivo del
+  repositorio no la tiene.
+- **Sin control de flujo de extremo a extremo.** La salida deja de leer del
+  destino cuando su cola por circuito llega a 128 celdas, pero no hay ventanas
+  tipo SENDME como en Tor. Una subida muy grande de un destino lento puede
+  frenar el enlace hasta 30 s; después se cierra ese stream.
+- **Circuitos de vida limitada.** Los relays destruyen un circuito a los 60 s
+  sin tráfico o a los 10 min de vida. Las conexiones abiertas en ese circuito
+  se cortan (el navegador reintenta); el proxy construye otro en el siguiente
+  pedido.
+- **`config/ultima_version`.** Guarda solo el número de versión más alto del
+  directorio visto por el proxy (anti-rollback); no es un dato del usuario.
+  Si se borra, el proxy acepta de nuevo cualquier versión vigente.
+
+## Limitaciones del entorno
+
+- **Permisos en Windows.** `chmod 600` solo se aplica completo en Linux/macOS
+  (o dentro de Docker). En Windows la protección de la carpeta de claves depende
+  de los permisos de la carpeta del usuario.
+- **Dónde viven las claves.** Por defecto en `claves/`, dentro del proyecto. Si el
+  proyecto está en OneDrive (como en los equipos del grupo), las claves cifradas se
+  copian a la nube. Con la variable `MINIONI_CLAVES` (ruta absoluta y local) todos
+  los programas usan otra carpeta; una ruta relativa, un archivo o una carpeta
+  sincronizada se rechazan. MiniOni no puede borrar las copias que ya subieron:
+  por eso las claves que pasaron por la nube se **regeneran**, no se mueven, y el
+  equipo vacía la papelera de OneDrive (ver `COMANDOS.txt` y `docs/ROTACION_CLAVES.md`).
+  `panel.py --carpeta RUTA` sigue usando `RUTA/claves` sin mirar la variable.
+- **Historial de Git.** `revisar_secretos.py` (paso 6) encuentra un secreto que
+  ya está en un commit, pero no lo borra: reescribir el historial no alcanza si
+  alguien ya lo clonó. La única respuesta segura es rotar ese secreto. El paso
+  necesita `git` en el `PATH` (se busca ahí a propósito, cada equipo lo instala en
+  otra ruta); sin git o sin repositorio solo avisa.
+- **Certificados de 90 días.** La renovación es manual (`renovar-certificado`). El
+  relay avisa al arrancar cuando quedan 15 días o menos, pero si nadie lo renueva
+  el relay deja de arrancar al vencer y los clientes lo rechazan (fallo cerrado).
+  Tras renovar hay que publicar el directorio con la versión siguiente.
+- **Distribución de la clave de la autoridad.** `config/autoridad.pub` debe
+  llegar a los clientes por un canal confiable. Si un atacante la reemplaza,
+  puede firmar su propio directorio.
+- **Modo laboratorio.** La política de salida permite excepciones explícitas
+  (por ejemplo, el servidor web del laboratorio). Cada excepción debe
+  documentarse aquí.

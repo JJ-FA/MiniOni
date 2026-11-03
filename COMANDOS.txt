@@ -1,0 +1,411 @@
+=====================================================================
+  MiniOni - Comandos de las semanas 1 a 3 y qué hace cada uno
+  Equipo Onion · Seguridad en Redes
+=====================================================================
+
+Todos los comandos se escriben en PowerShell, dentro de la carpeta
+MiniOni.
+
+
+---------------------------------------------------------------------
+0. PREPARAR LA TERMINAL (siempre, cada vez que abras una ventana nueva)
+---------------------------------------------------------------------
+
+.venv\Scripts\activate
+    Activa el entorno virtual de Python, donde están instaladas las
+    librerías del proyecto (cryptography, pytest, bandit...). Debe
+    aparecer (.venv) al inicio de la línea. Sin esto, nada funciona.
+
+pip install -r requirements-dev.txt
+    Instala las librerías con las versiones exactas del proyecto.
+    Solo hace falta la primera vez o cuando cambian los requisitos.
+    Norma: NIST SSDF PW.4.1 (componentes con versiones fijas).
+
+cls
+    Limpia la pantalla.
+
+
+---------------------------------------------------------------------
+1. CREAR LAS CLAVES Y EL DIRECTORIO (una sola vez, antes de la demo)
+---------------------------------------------------------------------
+
+python minioni_admin.py preparar-laboratorio
+    Hace todo en un solo paso, pidiendo la contraseña UNA vez (y su
+    confirmación): crea la autoridad (Ed25519), los 3 relays con sus
+    claves cebolla (X25519) y certificados TLS, firma el directorio y
+    lo verifica. Al final debe decir "Laboratorio listo".
+    Contraseña: mínimo 12 caracteres. Al escribirla no se ve nada; es
+    normal. Anótala: se necesita para volver a publicar.
+    Las claves privadas quedan cifradas con scrypt en la carpeta claves.
+    Norma: OWASP ASVS V11.4.4 (claves protegidas en disco).
+
+python minioni_admin.py preparar-laboratorio --reiniciar
+    Igual, pero antes borra las claves y el directorio generados.
+    Úsalo si olvidaste la contraseña o algo quedó a medias.
+    Nunca borra config\relays.json.
+
+Comandos individuales (lo mismo, paso por paso):
+    python minioni_admin.py generar-autoridad
+    python minioni_admin.py generar-relay --apodo entrada1
+    python minioni_admin.py generar-relay --apodo medio1
+    python minioni_admin.py generar-relay --apodo salida1
+    python minioni_admin.py publicar-directorio --version 1 --dias 7
+    En cada uno se pide la contraseña: debe ser la misma en todos.
+    publicar-directorio da 3 intentos si la contraseña no coincide.
+
+
+---------------------------------------------------------------------
+2. DEMOSTRACIÓN: LA CEBOLLA FUNCIONANDO
+---------------------------------------------------------------------
+
+python demo_capas.py
+    Simula en memoria un mensaje que cruza los 3 relays:
+    - [handshake]: el cliente acuerda una clave distinta con cada relay
+      (X25519). La clave nunca viaja por la red.
+    - [cliente]: envuelve el mensaje en 3 capas de cifrado
+      (ChaCha20-Poly1305). Todas las celdas miden 507 bytes.
+    - [entrada] y [intermedio]: cada uno quita solo su capa y sigue
+      viendo datos cifrados; no saben a dónde va el mensaje.
+    - [salida]: ve el destino (ejemplo.com:443), pero no sabe quién
+      lo pidió.
+    - Al final se altera un solo bit y el relay lo detecta y rechaza.
+    Normas: ASVS V11.3.3 (cifrado autenticado), V11.6.2 (intercambio
+    de claves).
+
+
+---------------------------------------------------------------------
+3. DEMOSTRACIÓN: UN ATACANTE NO PUEDE COLAR UN RELAY FALSO
+---------------------------------------------------------------------
+
+python minioni_admin.py verificar-directorio
+    Comprueba la firma, el formato y la vigencia del directorio.
+    Debe decir: "Directorio válido: versión 1, 3 relays" y mostrar los
+    puertos 9001, 9002 y 9003.
+
+python minioni_admin.py simular-ataque
+    Simula a un atacante que quiere desviar el tráfico hacia su propio
+    relay. Hace tres cosas y las muestra en pantalla:
+      1) Verifica el directorio original: válido.
+      2) Copia el directorio y cambia el puerto del relay de entrada
+         (9001 -> 9005). La copia se guarda en
+         config\directorio.atacado.json. El ORIGINAL NO SE TOCA.
+      3) Verifica la copia: "RECHAZADO ... La firma Ed25519 ya no
+         coincide".
+    Un solo número cambiado basta para que la firma no coincida. El
+    error es genérico y no muestra detalles internos.
+    Normas: ASVS V11.6.1 (firmas digitales), V16.5.1 (errores
+    genéricos). Amenaza STRIDE: S (suplantación).
+
+python minioni_admin.py verificar-directorio --archivo config\directorio.atacado.json
+    (Opcional) Verifica a mano la copia alterada. Debe decir
+    "Error: directorio de nodos no válido".
+
+notepad config\directorio.atacado.json
+    (Opcional) Abre la copia alterada para mostrar el puerto 9005.
+    Solo para mirar.
+
+IMPORTANTE: no edites config\directorio.firmado.json a mano. Si se
+daña o queda vacío, vuelve a crearlo con:
+    python minioni_admin.py publicar-directorio --version 1 --dias 7
+
+
+---------------------------------------------------------------------
+4. REVISIONES DE SEGURIDAD DEL CÓDIGO
+---------------------------------------------------------------------
+
+python -m pytest -v
+    Ejecuta las pruebas automáticas. Debe terminar en
+    "344 passed, 1 skipped" (tarda unos 4 minutos). Cada nombre dice qué comprueba; por
+    ejemplo test_relay_falso_no_puede_completar_handshake.
+    Incluye 24 pruebas de fuzzing que lanzan datos basura aleatorios
+    contra todo lo que recibe información de afuera (también contra la
+    máquina de estados del relay) y 14 pruebas de red que levantan 3
+    relays reales con TLS 1.3 en 127.0.0.1 (tests/test_red.py).
+    Desde la semana 3 hay además fuzzing de SOCKS5, del nodo de salida y
+    de la política, y 20 pruebas con relays + proxy SOCKS5 + un servidor
+    HTTP local (tests/test_salida_proxy.py), 7 del panel gráfico
+    (tests/test_panel.py) y 10 de la verificación sin registros
+    (tests/test_sin_registros.py, incluida una versión con fugas
+    simulada que debe ser detectada), y 10 de HTTPS en las pruebas
+    del panel (tests/test_https_panel.py). Desde la Clase 3 hay además
+    pruebas de la carpeta de claves (tests/test_carpeta_claves.py), del
+    historial de Git y del SAST de las pruebas
+    (tests/test_revisiones_clase3.py) y de la rotación de certificados
+    (tests/test_rotacion.py).
+
+python -m pytest tests/test_salida_proxy.py -v
+    Solo las pruebas de la semana 3: página por el proxy, 1 MB íntegro,
+    destinos internos y puertos bloqueados (END 1 / SOCKS 05 02), 33
+    streams, cierre a mitad de descarga, relays caídos = 05 01 sin
+    conexión directa, el proxy nunca resuelve nombres, anti-rollback,
+    proxy solo en 127.0.0.1 y medio1 caído/reiniciado.
+    Normas: ASVS V16.5.3 (fallo cerrado), V2.2.1, V16.2.5.
+
+python -m pytest tests/test_red.py -v
+    Solo las pruebas de red: circuito de 3 saltos con eco, TLS 1.2
+    rechazado, huella TLS distinta, bit alterado, bytes basura,
+    límites por IP y por enlace, inactividad, caída del relay
+    intermedio y que la consola nunca muestre IP ni puertos.
+    Normas: ASVS V12.1.1, V12.3.4, V2.4.1, V16.5.3, V16.2.5.
+    La prueba omitida revisa permisos de archivo de Linux; Windows no
+    los usa.
+
+python -m pytest tests/test_fuzzing.py --hypothesis-profile=intenso
+    Fuzzing intenso: unas 105 000 entradas aleatorias. Tarda varios
+    minutos; mejor no hacerlo en vivo.
+    Normas: NIST SSDF PW.8.2 (pruebas del código), ASVS V2.2.1
+    (validación de entradas).
+
+bandit -c pyproject.toml -r .
+    Análisis estático de seguridad: busca en el código contraseñas
+    escritas, funciones peligrosas o aleatorios débiles. Debe decir
+    "No issues identified".
+    Norma: NIST SSDF PW.7.2 (revisión del código).
+
+python -m bandit -q -r tests -s B101,B104,B105
+    El mismo análisis sobre las pruebas (Clase 3). Se omiten solo tres
+    reglas: B101 (pytest usa assert), B104 (0.0.0.0 aparece en pruebas
+    que comprueban que se rechaza) y B105 (contraseñas de laboratorio
+    que solo existen en las pruebas). En tests no se acepta ninguna
+    marca para silenciar a Bandit. No debe mostrar nada.
+
+pip-audit -r requirements.txt
+    Revisa si la librería que usamos (cryptography) tiene
+    vulnerabilidades conocidas. Necesita internet. Debe decir
+    "No known vulnerabilities found".
+    Norma: NIST SSDF PW.4.1.
+
+
+---------------------------------------------------------------------
+4b. TODO DE UNA SOLA VEZ
+---------------------------------------------------------------------
+
+python revision_completa.py
+    Ejecuta seguidas las pruebas, las pruebas de red, las del proxy, Bandit
+    (programa y pruebas), la revisión de secretos, la
+    demostración de la cebolla, la verificación del directorio y la
+    simulación de ataque. Al final
+    muestra un RESUMEN con OK o FALLO por paso y "Todo correcto." si
+    todo pasó.
+
+python revision_completa.py --con-internet
+    Igual, y además revisa vulnerabilidades con pip-audit.
+
+
+---------------------------------------------------------------------
+5. SEMANA 2: LEVANTAR LOS 3 RELAYS EN ESTE COMPUTADOR
+---------------------------------------------------------------------
+
+python minioni_admin.py publicar-directorio --version 2 --relays config\relays.local.json
+    Firma un directorio nuevo con los 3 relays en 127.0.0.1, puertos
+    9001, 9002 y 9003 (config\relays.local.json). Se hace UNA vez.
+    Usa siempre un número de versión mayor que el anterior.
+    config\relays.json queda con las IP de Docker para la semana 4.
+    Si arrancas un relay con el directorio de Docker, dirá que no pudo
+    escuchar en el puerto: falta este paso.
+
+Luego abre TRES ventanas de PowerShell (en cada una: .venv\Scripts\activate)
+y ejecuta un relay en cada una:
+
+python ejecutar_relay.py --apodo entrada1
+python ejecutar_relay.py --apodo medio1
+python ejecutar_relay.py --apodo salida1
+    Cada relay: verifica la firma del directorio, comprueba que sus
+    claves coinciden con lo publicado, pide la contraseña UNA vez y
+    escucha con TLS 1.3. Debe decir "nodo iniciado".
+    La consola solo muestra eventos genéricos (circuito creado,
+    circuito cerrado, celda rechazada...). Nunca IP, puertos de
+    clientes ni contenido.
+    Ctrl+C apaga el relay de forma limpia ("nodo detenido").
+    Normas: ASVS V12.1.1 (solo TLS 1.3), V16.2.5 (sin datos sensibles
+    en la consola), V2.4.1 (límites anti-saturación).
+
+python cliente_prueba.py
+    En una cuarta ventana. Construye un circuito real de 3 saltos
+    (entrada -> intermedio -> salida) y envía un eco:
+      [1/3] Circuito hasta entrada1 ...    OK
+      [2/3] Extendido a medio1 ...         OK
+      [3/3] Extendido a salida1 ...        OK
+      Eco enviado: "hola MiniOni" (12 bytes)
+      Eco recibido: "hola MiniOni" · ida y vuelta 2 ms
+    Con --mensaje "otro texto" se envía otro mensaje (máx. 448 bytes).
+
+Demostración de fallo cerrado:
+    Detén la ventana de medio1 con Ctrl+C y vuelve a ejecutar
+    cliente_prueba.py: debe decir FALLO y "el circuito se cerró".
+    El cliente nunca intenta otro camino. Al reiniciar medio1, vuelve
+    a funcionar.
+    Norma: ASVS V16.5.3 (fallo seguro).
+
+
+---------------------------------------------------------------------
+6. SEMANA 3: NAVEGAR POR MINIONI (proxy SOCKS5)
+---------------------------------------------------------------------
+
+Orden de arranque: 3 relays (sección 5) -> proxy -> navegador.
+
+python cliente_proxy.py
+    En otra ventana, con los 3 relays corriendo. Verifica el directorio
+    (con anti-rollback: guarda en config\ultima_version solo el número
+    de versión más alto visto) y abre un proxy SOCKS5 en 127.0.0.1:9050.
+    Debe decir "directorio verificado" y "nodo iniciado". Al primer uso
+    dice "circuito creado (1)". Nunca muestra dominios, IP ni puertos.
+    Solo escucha en 127.0.0.1: "--escuchar 0.0.0.0" se rechaza.
+    Ctrl+C lo apaga.
+    Normas: ASVS V16.5.3 (fallo cerrado), V16.2.5.
+
+curl.exe --socks5-hostname 127.0.0.1:9050 https://example.com
+    En una ventana más. Descarga example.com por el circuito de 3
+    saltos. --socks5-hostname hace que el NOMBRE viaje dentro del
+    circuito y lo resuelva el nodo de salida (DNS remoto).
+    curl (97) ... (1): no hay circuito o el destino no respondió.
+    curl (97) ... (2): destino no permitido por la política de salida.
+
+curl.exe --socks5-hostname 127.0.0.1:9050 http://127.0.0.1:9001
+    Demostración de la política de salida: un destino interno se
+    bloquea (código 2). El relay de salida muestra "destino bloqueado
+    por la política de salida", sin decir cuál.
+
+Firefox: seguir docs\NAVEGADOR.md (proxy SOCKS 127.0.0.1:9050, SOCKS v5,
+"Usar proxy DNS cuando se use SOCKS v5" y en about:config
+media.peerconnection.enabled = false).
+
+Demostración de fallo cerrado con el navegador:
+    Detén medio1 con Ctrl+C y recarga la página: falla, no sale directo.
+    Vuelve a arrancar medio1 y recarga: funciona con un circuito nuevo.
+
+notepad config\politica_salida.json
+    Política del nodo de salida: {"puertos": [80, 443],
+    "excepciones_redes": []}. Se valida de forma estricta al arrancar
+    los relays (si está mal, no arrancan). Cada excepción de red que se
+    agregue debe documentarse en docs\LIMITES.md.
+
+
+---------------------------------------------------------------------
+7. PANEL GRÁFICO (todo en una ventana)
+---------------------------------------------------------------------
+
+python panel.py
+    Abre el panel de MiniOni (vinotinto y negro). Hace lo mismo que las
+    secciones 5 y 6 en una sola ventana:
+      1. Escribe la contraseña de las claves y pulsa "Iniciar red":
+         levanta los 3 relays y el proxy SOCKS5 en 127.0.0.1:9050.
+         (Si avisa que el directorio es el de Docker, pulsa antes
+         "Publicar directorio local" con la contraseña de la autoridad.)
+      2. "Probar circuito": eco por 3 saltos reales, con el tiempo.
+      3. "Abrir por MiniOni": pide la dirección escrita a través del
+         proxy (DNS remoto) y muestra el código HTTP y los bytes.
+      4. "Apagar" en medio1 y otra vez "Abrir por MiniOni": falla
+         (fallo cerrado, nunca sale directo). "Encender" y vuelve a
+         funcionar.
+      5. "Verificar sin registros": busca en DuckDuckGo una palabra
+         testigo inventada (por ejemplo minioni3a7f0c91e2d4) por
+         MiniOni, vigilando cada escritura en disco y todo lo que se
+         imprime, y luego busca el testigo en los archivos. Debe decir
+         "SIN REGISTROS" con 0 escrituras y 0 apariciones.
+         Compruébalo tú después con:
+           findstr /s /i /m "EL_TESTIGO" *
+         (no debe listar ningún archivo). Ver docs\SIN_REGISTROS.md.
+      6. "Guía de Firefox" abre docs\NAVEGADOR.md; "Copiar comando curl"
+         deja el comando listo para pegar en PowerShell.
+    El registro de eventos muestra lo mismo que la consola: sin IP,
+    dominios ni puertos. La contraseña se borra del campo y no se guarda.
+    No abras a la vez el panel y las ventanas de las secciones 5 y 6:
+    usan los mismos puertos.
+
+python panel.py --puerto 9150
+    El proxy escucha en 127.0.0.1:9150 en vez de 9050.
+
+
+---------------------------------------------------------------------
+8. DOCUMENTACIÓN (carpeta docs)
+---------------------------------------------------------------------
+
+docs\ARQUITECTURA.md              Componentes, diagramas y decisiones.
+docs\PROTOCOLO.md                 Formato de celdas, capas, handshake,
+                                  TLS 1.3, ECO, motivos de DESTROY y END,
+                                  streams y SOCKS5.
+docs\INVENTARIO_CRIPTOGRAFICO.md  Cada clave: dónde vive, qué protege,
+                                  cuánto dura. Incluye el fallo de la
+                                  clave TLS que encontramos y corregimos.
+docs\LIMITES.md                   Qué NO protege MiniOni.
+docs\NAVEGADOR.md                 Cómo configurar Firefox y curl.
+docs\TRAZABILIDAD.md              Requisito -> norma -> código -> prueba.
+docs\SIN_REGISTROS.md             Cómo demostrar que no se registran
+                                  las búsquedas.
+docs\capturas                    Capturas del panel gráfico.
+
+---------------------------------------------------------------------
+REVISIÓN DE SECRETOS (Clase 3)
+---------------------------------------------------------------------
+
+python revisar_secretos.py
+    Busca contraseñas, tokens y claves escritos en los archivos que
+    irían al repositorio (detect-secrets), comprueba que .gitignore
+    excluya claves/ y *.key, que todas las claves privadas estén
+    cifradas con scrypt y avisa si la carpeta de claves está en
+    OneDrive, Dropbox o Google Drive. Paso 6: si hay repositorio Git,
+    revisa también lo que agregó cada commit anterior (un secreto
+    borrado sigue en el historial: hay que rotarlo). Nunca imprime el
+    secreto: solo archivo, línea o commit, y tipo. Debe terminar en
+    "sin secretos expuestos".
+    Norma: NIST SSDF PS.1.
+
+git config core.hooksPath hooks
+    Ya activado en el repositorio (03-11-2026). En un clon nuevo hay que
+    ejecutarlo otra vez: activa hooks\pre-commit, que
+    ejecuta revisar_secretos.py antes de cada commit y lo cancela si
+    encuentra algo. Así ningún secreto entra al historial.
+
+python -m pytest tests/test_codificacion_segura.py -v
+    Pruebas de los 4 controles de la Clase 3: puerto válido en la línea
+    de comandos, errores sin trazas, regla contra criptografía débil y
+    revisión de secretos.
+
+
+---------------------------------------------------------------------
+CLAVES FUERA DE ONEDRIVE (Clase 3, se hace UNA vez por equipo)
+---------------------------------------------------------------------
+
+Las claves que pasaron por la nube se consideran expuestas: no se
+mueven, se REGENERAN en una carpeta local.
+
+mkdir C:\MiniOniClaves
+setx MINIONI_CLAVES C:\MiniOniClaves
+    Guarda la variable para las próximas ventanas. Cierra esta ventana
+    de PowerShell y abre una nueva (y vuelve a activar el entorno).
+
+python minioni_admin.py donde-estan-las-claves
+    Dice qué carpeta se usa (la predeterminada o MINIONI_CLAVES), si
+    está en la nube y cuántos relays tienen claves. Debe decir
+    "definida con MINIONI_CLAVES" y "no está en una carpeta
+    sincronizada con la nube". Si la variable no es una ruta absoluta,
+    es un archivo o está dentro de OneDrive, da error y no sigue.
+
+python minioni_admin.py preparar-laboratorio
+    Crea autoridad, relays y directorio en la carpeta nueva. Publica
+    el directorio con la versión siguiente a la que ya vio este equipo.
+
+python revisar_secretos.py
+    Ya no debe mostrar el aviso de OneDrive.
+
+Después el equipo borra la carpeta claves vieja del proyecto y vacía
+la papelera de OneDrive.
+
+
+---------------------------------------------------------------------
+ROTACIÓN DE CERTIFICADOS (ver docs\ROTACION_CLAVES.md)
+---------------------------------------------------------------------
+
+python minioni_admin.py revisar-certificados
+    Días que le quedan al certificado TLS de cada relay (duran 90).
+    Termina con error si alguno ya venció. Al arrancar, un relay con
+    15 días o menos muestra "certificado TLS próximo a vencer (N)".
+
+python minioni_admin.py renovar-certificado --apodo salida1
+    Pide la contraseña, comprueba que abre la clave TLS actual y crea
+    una clave y un certificado nuevos (90 días). La clave cebolla no
+    cambia. Con una contraseña equivocada no toca ningún archivo.
+    Después publica el directorio con la versión que indica:
+        python minioni_admin.py publicar-directorio --version N
+    Hasta entonces ese relay no arranca y los clientes lo rechazan.

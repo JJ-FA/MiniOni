@@ -1,0 +1,6 @@
+-r requirements.txt
+pytest==9.1.1
+hypothesis==6.170.8   # fuzzing (NIST SSDF PW.8.2)
+bandit==1.9.4         # análisis estático de seguridad (NIST SSDF PW.7.2)
+pip-audit==2.10.1     # vulnerabilidades conocidas en dependencias (PW.4.1)
+detect-secrets==1.5.0  # revisión de secretos (NIST SSDF PS.1)

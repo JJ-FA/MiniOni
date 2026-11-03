@@ -1,0 +1,6 @@
+# El hook lo ejecuta sh: con CRLF fallaría al clonarlo en Windows.
+hooks/pre-commit text eol=lf
+# COMANDOS.txt se abre con el Bloc de notas de Windows.
+COMANDOS.txt text eol=crlf
+*.pdf binary
+*.png binary
