@@ -333,6 +333,10 @@ docs\NAVEGADOR.md                 Cómo configurar Firefox y curl.
 docs\TRAZABILIDAD.md              Requisito -> norma -> código -> prueba.
 docs\SIN_REGISTROS.md             Cómo demostrar que no se registran
                                   las búsquedas.
+docs\CLASE3_NVD.md                CVE del NVD que tocan a MiniOni,
+                                  ordenados por los 4 controles.
+docs\ROTACION_CLAVES.md           Cuándo y cómo rotar certificados
+                                  y claves.
 docs\capturas                    Capturas del panel gráfico.
 
 ---------------------------------------------------------------------

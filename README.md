@@ -155,6 +155,7 @@ de OneDrive. Rotación de certificados y claves: [docs/ROTACION_CLAVES.md](docs/
 | [docs/ROTACION_CLAVES.md](docs/ROTACION_CLAVES.md) | Cuándo y cómo rotar el certificado TLS, la clave cebolla y la autoridad |
 | [docs/capturas](docs/capturas) | Capturas del panel gráfico (`panel.py`) |
 | [docs/CLASE3_FALLOS_Y_CORRECCIONES.md](docs/CLASE3_FALLOS_Y_CORRECCIONES.md) | Los 11 fallos de la Clase 3: control, causa y corrección |
+| [docs/CLASE3_NVD.md](docs/CLASE3_NVD.md) | CVE del NVD que tocan a MiniOni, por control (03-11-2026) |
 | [docs/CLASE3_CODIFICACION_SEGURA.md](docs/CLASE3_CODIFICACION_SEGURA.md) | Investigación de los 4 controles (Clase 3): hallazgos, SAST, secretos |
 | [docs/TRASPASO_CLASE3_CLAUDE_CODE.md](docs/TRASPASO_CLASE3_CLAUDE_CODE.md) | Traspaso para Claude Code: reglas nuevas, estado y tareas T1-T7 antes de la Clase 4 |
 | [docs/TRAZABILIDAD.md](docs/TRAZABILIDAD.md) | Requisito → norma → código → prueba |

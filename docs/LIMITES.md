@@ -113,6 +113,19 @@
 
 ## Limitaciones del entorno
 
+- **OpenSSL que trae Python.** El TLS 1.3 entre nodos usa el OpenSSL incluido en
+  Python (3.5.7 con Python 3.14.6), que pip-audit no revisa. CVE-2026-75803 lo
+  alcanza sin camino explotable en MiniOni (ver `docs/CLASE3_NVD.md`); se corrige
+  actualizando Python.
+- **Verificación sin registros.** Los ganchos de auditoría de Python (PEP 578) no
+  son una barrera de seguridad: CVE-2026-2297 muestra eventos que no se emiten (la
+  lectura de `.pyc`). La verificación vigila escrituras, que sí se emiten, y además
+  busca el testigo en los archivos.
+- **Enlaces simbólicos.** `revisar_secretos.py` recorre las carpetas con `rglob`, que
+  no entra en carpetas enlazadas: una clave dentro de una carpeta enlazada de la
+  carpeta de claves no se revisaría (mismo tipo de fallo que CVE-2026-81690). No
+  afecta a lo que va al repositorio, porque Git tampoco sigue enlaces.
+
 - **Permisos en Windows.** `chmod 600` solo se aplica completo en Linux/macOS
   (o dentro de Docker). En Windows la protección de la carpeta de claves depende
   de los permisos de la carpeta del usuario.
