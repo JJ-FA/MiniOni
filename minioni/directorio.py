@@ -18,10 +18,16 @@ Directorio:
       "relays": [
         {"apodo": "entrada1", "host": "10.10.1.10", "puerto": 9001,
          "clave_cebolla": "<base64 X25519>", "huella_tls": "<sha256 hex>",
-         "salida": false},
+         "salida": false, "entrada": true},
         ...
       ]
     }
+
+"entrada" (semana 4) marca los relays que pueden ser el PRIMER salto, como la marca
+Guard de Tor. Con redes segmentadas el cliente solo llega a la entrada, y la entrada
+solo al intermedio, así que la ruta no puede elegirse en cualquier orden. Es opcional
+para aceptar directorios anteriores (sin el campo = false). Un relay no puede ser
+entrada y salida a la vez: vería la IP del cliente y el destino.
 """
 
 from __future__ import annotations
@@ -53,6 +59,7 @@ _HUELLA = re.compile(r"^[0-9a-f]{64}$")
 _FECHA = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 _CAMPOS_DIR = {"version", "publicado", "valido_hasta", "relays"}
 _CAMPOS_RELAY = {"apodo", "host", "puerto", "clave_cebolla", "huella_tls", "salida"}
+_CAMPOS_RELAY_CON_ENTRADA = _CAMPOS_RELAY | {"entrada"}
 
 
 @dataclass(frozen=True)
@@ -63,6 +70,7 @@ class Relay:
     clave_cebolla: bytes
     huella_tls: str
     salida: bool
+    entrada: bool = False
 
 
 @dataclass(frozen=True)
@@ -125,7 +133,8 @@ def formato_fecha(dt: datetime) -> str:
 # --- validación del contenido (ASVS V2.2.1) ------------------------------------
 
 def _validar_relay(r) -> Relay:
-    if not isinstance(r, dict) or set(r) != _CAMPOS_RELAY:
+    # Lista blanca con dos formas exactas: la original y la que trae "entrada".
+    if not isinstance(r, dict) or set(r) not in (_CAMPOS_RELAY, _CAMPOS_RELAY_CON_ENTRADA):
         raise DirectorioInvalido("relay con campos inesperados")
     if not isinstance(r["apodo"], str) or not _APODO.fullmatch(r["apodo"]):
         raise DirectorioInvalido("apodo inválido")
@@ -138,8 +147,13 @@ def _validar_relay(r) -> Relay:
         raise DirectorioInvalido("huella TLS inválida")
     if not isinstance(r["salida"], bool):
         raise DirectorioInvalido("campo salida inválido")
+    entrada = r.get("entrada", False)
+    if not isinstance(entrada, bool):
+        raise DirectorioInvalido("campo entrada inválido")
+    if entrada and r["salida"]:
+        raise DirectorioInvalido("un relay no puede ser entrada y salida")
     clave = _b64_exacto(r["clave_cebolla"], TAM_CLAVE_PUBLICA, "clave_cebolla")
-    return Relay(r["apodo"], host, puerto, clave, r["huella_tls"], r["salida"])
+    return Relay(r["apodo"], host, puerto, clave, r["huella_tls"], r["salida"], entrada)
 
 
 def validar_estructura(d) -> Directorio:

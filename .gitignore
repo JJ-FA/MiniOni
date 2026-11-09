@@ -18,6 +18,10 @@ venv/
 .hypothesis/
 config/directorio.atacado.json
 config/ultima_version
+config/ultima_version.*
+
+# Directorio firmado para Docker: se genera con laboratorio_docker.py preparar
+config/directorio.docker.json
 
 # Salidas de diagnóstico guardadas a mano (contienen datos del equipo)
 errores.txt

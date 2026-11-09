@@ -11,6 +11,11 @@ Mismas reglas que el resto de MiniOni:
   relay apagado se vuelve a encender con las claves que ya están en memoria.
 - Las pruebas (eco y página) solo se conectan al relay de entrada o al
   proxy en 127.0.0.1: nunca hay conexión directa al destino (ASVS V16.5.3).
+
+Modo Docker (semana 4): los relays viven en contenedores que maneja el
+`orquestador` que recibe el constructor (`laboratorio_docker` en el panel, uno
+simulado en las pruebas). Aquí corre solo el proxy, y la contraseña solo pasa
+como argumento hasta la entrada estándar de cada relay.
 """
 
 from __future__ import annotations
@@ -41,13 +46,18 @@ from .errores import (
     PruebaFallida,
 )
 from .politica_salida import cargar_politica
-from .proxy import ServidorProxy, cargar_directorio, leer_ultima_version
+from .proxy import GestorCircuitos, ServidorProxy, cargar_directorio, leer_ultima_version, ruta_ultima_version
 from .relay import ConfigRelay, NodoRelay, cargar_relay, verificar_identidad
 
 MAX_BYTES_PRUEBA = 5 * 1024 * 1024
 # Buscador para la verificación «sin registros» (versión HTML, sin JavaScript).
 BUSCADOR_PRUEBA = "https://html.duckduckgo.com/html/?q="
+# Sin Internet, la búsqueda testigo va a la web del laboratorio (red_destinos).
+BUSCADOR_DOCKER = "http://web/?q="
 TIMEOUT_PRUEBA_S = 30
+DIRECTORIO_DOCKER = "directorio.docker.json"
+ENTRADA_DOCKER = ("127.0.0.1", 9001)   # el único puerto que Docker publica en este equipo
+ESPERA_CIERRE_DOCKER_S = 120
 
 
 def _es_ip(texto: str) -> bool:
@@ -76,11 +86,18 @@ def es_local(d: dirmod.Directorio) -> bool:
 
 class ControladorRed:
     def __init__(self, carpeta_config: Path = Path("config"), carpeta_claves: Path = Path("claves"),
-                 puerto_proxy: int = PUERTO_PROXY, config_relay: ConfigRelay | None = None) -> None:
+                 puerto_proxy: int = PUERTO_PROXY, config_relay: ConfigRelay | None = None,
+                 orquestador=None) -> None:
         self.config = Path(carpeta_config)
         self.claves = Path(carpeta_claves)
         self._puerto_proxy = puerto_proxy
         self._config_relay = config_relay
+        self._orq = orquestador
+        self.modo = "local"
+        self.con_internet = False
+        self.aviso = ""                    # progreso del arranque en Docker (solo textos fijos)
+        self._entrada_via: tuple[str, int] | None = None   # solo con el laboratorio Docker en marcha
+        self._salidas: dict[str, bool] = {}
         self.directorio: dirmod.Directorio | None = None
         self.nodos: dict[str, NodoRelay] = {}
         self._activos: dict[str, bool] = {}
@@ -135,7 +152,7 @@ class ControladorRed:
         return {
             "en_marcha": proxy is not None,
             "nodos": dict(self._activos),
-            "salidas": {a: n.propio.salida for a, n in self.nodos.items()},
+            "salidas": {**self._salidas, **{a: n.propio.salida for a, n in self.nodos.items()}},
             "proxy": proxy is not None,
             "puerto_proxy": proxy.puerto if proxy else self._puerto_proxy,
             "circuitos": proxy.gestor.circuitos if proxy else 0,
@@ -143,10 +160,59 @@ class ControladorRed:
             "bloqueados": self._bloqueados,
         }
 
+    # --- modo Docker -----------------------------------------------------------------
+
+    @property
+    def docker_disponible(self) -> bool:
+        return self._orq is not None
+
+    def cambiar_modo(self, modo: str) -> None:
+        """Elige 'local' o 'docker'. Solo con la red detenida."""
+        if modo not in ("local", "docker") or (modo == "docker" and self._orq is None):
+            raise ConfiguracionInvalida("modo no disponible")
+        if self.proxy is not None:
+            raise ConfiguracionInvalida("detén la red antes de cambiar de modo")
+        self.modo = modo
+
+    def _llamar(self, funcion, *args, **kw):
+        """Llama al orquestador convirtiendo cualquier fallo en un error genérico de MiniOni."""
+        try:
+            return funcion(*args, **kw)
+        except self._orq.ErrorLaboratorio as e:   # sus mensajes son fijos, nunca salida de Docker
+            raise PruebaFallida(str(e).rstrip(".")) from None
+        except self._orq.ERRORES_DOCKER:
+            raise PruebaFallida("no se pudo comunicar con Docker") from None
+        except SystemExit:
+            raise ConfiguracionInvalida("faltan claves o config/relays.json") from None
+
+    def _avisar(self, texto: str) -> None:
+        self.aviso = texto.strip()
+
+    def publicar_directorio_docker(self, contrasena: str) -> int:
+        """Firma config/directorio.docker.json (no toca el local). Devuelve la versión."""
+        if self._orq is None:
+            raise ConfiguracionInvalida("modo no disponible")
+        if self.proxy is not None:
+            raise ConfiguracionInvalida("detén la red antes de publicar")
+        self._llamar(self._orq.preparar, contrasena)
+        return self.revisar_directorio()["version"]
+
     # --- directorio ------------------------------------------------------------------
 
+    def _revisar_directorio_docker(self) -> dict:
+        ruta = self.config / DIRECTORIO_DOCKER
+        try:
+            minima = leer_ultima_version(ruta_ultima_version(self.config, ruta))
+            d = dirmod.verificar(ruta.read_bytes(), ak.cargar_publica(self.config / "autoridad.pub"),
+                                 version_minima=minima)
+        except (MiniOniError, OSError, ValueError):
+            return {"estado": "invalido", "version": None, "relays": []}
+        return {"estado": "docker", "version": d.version, "relays": [(r.apodo, r.salida) for r in d.relays]}
+
     def revisar_directorio(self) -> dict:
-        """Sin modificar nada. {'estado': 'local' | 'remoto' | 'invalido', 'version', 'relays': [(apodo, salida)]}."""
+        """Sin modificar nada. {'estado': 'local' | 'remoto' | 'docker' | 'invalido', 'version', 'relays': [(apodo, salida)]}."""
+        if self.modo == "docker":
+            return self._revisar_directorio_docker()
         try:
             minima = leer_ultima_version(self.config / "ultima_version")
             d = dirmod.verificar((self.config / "directorio.firmado.json").read_bytes(),
@@ -177,10 +243,39 @@ class ControladorRed:
 
     # --- arranque y apagado ---------------------------------------------------------
 
-    async def iniciar(self, contrasena: str) -> int:
-        """Verifica el directorio, descifra las claves y levanta todos los relays y el proxy."""
+    async def _iniciar_docker(self, contrasena: str, internet: bool) -> int:
+        """Levanta el laboratorio con el orquestador y, en este equipo, solo el proxy."""
+        ruta = self.config / DIRECTORIO_DOCKER
+        d = cargar_directorio(ruta, self.config / "autoridad.pub", ruta_ultima_version(self.config, ruta))
+        try:
+            await asyncio.to_thread(self._llamar, self._orq.iniciar_con_contrasena, contrasena,
+                                    internet=internet, avisar=self._avisar)
+        finally:
+            self.aviso = ""
+        try:
+            proxy = ServidorProxy(d, puerto=self._puerto_proxy, gestor=GestorCircuitos(d, entrada_via=ENTRADA_DOCKER))
+            await proxy.iniciar()
+        except BaseException:   # fallo cerrado: sin proxy no queda el laboratorio a medias
+            with contextlib.suppress(MiniOniError):
+                await asyncio.to_thread(self._llamar, self._orq.detener)
+            raise
+        self.proxy, self.directorio, self._entrada_via, self.con_internet = proxy, d, ENTRADA_DOCKER, internet
+        self._activos = {r.apodo: True for r in d.relays}
+        self._salidas = {r.apodo: r.salida for r in d.relays}
+        for relay in d.relays:
+            consola.evento(f"relay-{relay.apodo}", "ARRANQUE")
+        self.instantanea = self._calcular()
+        return len(d.relays)
+
+    async def iniciar(self, contrasena: str, internet: bool = False) -> int:
+        """Verifica el directorio, descifra las claves y levanta todos los relays y el proxy.
+
+        `internet` solo cuenta en modo Docker: conecta a Internet únicamente el relay de salida.
+        """
         if self.proxy is not None:
-            return len(self.nodos)
+            return len(self._activos)
+        if self.modo == "docker":
+            return await self._iniciar_docker(contrasena, internet)
         d = cargar_directorio(self.config / "directorio.firmado.json", self.config / "autoridad.pub",
                               self.config / "ultima_version")
         if not es_local(d):
@@ -215,6 +310,14 @@ class ControladorRed:
         if self.proxy is not None:
             await self.proxy.detener()
             self.proxy = None
+        if self._entrada_via is not None:
+            self._entrada_via, self.directorio, self.con_internet = None, None, False
+            self._activos, self._salidas = {}, {}
+            try:
+                await asyncio.to_thread(self._llamar, self._orq.detener)
+            finally:
+                self.instantanea = self._calcular()
+            return
         for apodo, nodo in self.nodos.items():
             if self._activos.get(apodo):
                 await nodo.detener()
@@ -223,6 +326,14 @@ class ControladorRed:
 
     async def alternar(self, apodo: str) -> bool:
         """Apaga o enciende un relay (demostración de fallo cerrado). Devuelve el nuevo estado."""
+        if self._entrada_via is not None:
+            if apodo not in self._activos:
+                raise ConfiguracionInvalida("relay desconocido")
+            encendido = self._activos[apodo]
+            await asyncio.to_thread(self._llamar, self._orq.pausar if encendido else self._orq.reanudar, apodo)
+            self._activos[apodo] = not encendido
+            self.instantanea = self._calcular()
+            return not encendido
         nodo = self.nodos.get(apodo)
         if nodo is None:
             raise ConfiguracionInvalida("relay desconocido")
@@ -243,7 +354,7 @@ class ControladorRed:
         """ECO por un circuito nuevo de 3 saltos. Devuelve (milisegundos, saltos)."""
         if self.directorio is None:
             raise PruebaFallida("primero inicia la red")
-        circuito = CircuitoCliente()
+        circuito = CircuitoCliente(entrada_via=self._entrada_via)
         try:
             await circuito.construir(self.directorio, elegir_ruta(self.directorio))
             inicio = time.perf_counter()
@@ -293,17 +404,35 @@ class ControladorRed:
         except (OSError, asyncio.IncompleteReadError, ValueError, IndexError):
             raise PruebaFallida("la conexión se cerró") from None
 
-    async def verificar_sin_registros(self, buscador: str = BUSCADOR_PRUEBA,
+    async def probar_segmentacion(self) -> list[dict]:
+        """Matriz de a qué llega un equipo conectado a cada red (ISO/IEC 27033)."""
+        if self._entrada_via is None:
+            raise PruebaFallida("primero inicia la red en modo Docker")
+        return await asyncio.to_thread(self._llamar, self._orq.matriz_segmentacion)
+
+    async def _contenedores_sin_registros(self) -> bool | None:
+        """None en modo local. Si no se puede confirmar, cuenta como no confirmado (fallo cerrado)."""
+        if self._entrada_via is None:
+            return None
+        try:
+            return await asyncio.to_thread(self._llamar, self._orq.contenedores_sin_registros)
+        except MiniOniError:
+            return False
+
+    async def verificar_sin_registros(self, buscador: str | None = None,
                                       carpetas: list[Path] | None = None) -> sin_registros.InformeRegistros:
         """Búsqueda testigo por MiniOni vigilando disco y consola (ver `sin_registros.py`)."""
         if self.proxy is None:
             raise PruebaFallida("primero inicia la red")
+        if buscador is None:
+            buscador = BUSCADOR_DOCKER if self._entrada_via is not None and not self.con_internet else BUSCADOR_PRUEBA
         testigo = "minioni" + secrets.token_hex(6)   # palabra inventada, única en el mundo
         url = buscador + testigo
         dominio = urlsplit(url).hostname or ""
         # Se rastrean el testigo y el nombre del buscador. Una IP literal no es un nombre
-        # buscado y las de 127.0.0.1 están (legítimamente) en el directorio de relays.
-        rastros = [testigo] if _es_ip(dominio) else [testigo, dominio]
+        # buscado y las de 127.0.0.1 están (legítimamente) en el directorio de relays. Un
+        # nombre sin punto («web») tampoco sirve de rastro: aparecería en cualquier archivo.
+        rastros = [testigo] if _es_ip(dominio) or "." not in dominio else [testigo, dominio]
         if carpetas is None:
             carpetas = [self.config, self.claves, Path.cwd(), Path(tempfile.gettempdir())]
         inicio = time.time()
@@ -318,8 +447,9 @@ class ControladorRed:
         archivos, revisados = await asyncio.to_thread(
             sin_registros.buscar_en_archivos, carpetas, rastros, inicio)
         en_consola = any(r and r in espejo.texto for r in rastros)
+        contenedores = await self._contenedores_sin_registros()
         return sin_registros.InformeRegistros(testigo, dominio, busqueda, ok, list(vigia.escrituras),
-                                              en_consola, archivos, revisados, time.time() - inicio)
+                                              en_consola, archivos, revisados, time.time() - inicio, contenedores)
 
     async def _pedir(self, partes, host: str, puerto: int, inicio: float,
                      verifica_windows: bool = False) -> tuple[int, int, float]:
@@ -371,6 +501,8 @@ class ControladorRed:
 
     def cerrar(self, timeout: float = 10) -> None:
         """Apaga la red y el hilo. Se llama al cerrar la ventana."""
+        if self._entrada_via is not None:   # docker compose down tarda más que apagar relays locales
+            timeout = max(timeout, ESPERA_CIERRE_DOCKER_S)
         with contextlib.suppress(concurrent.futures.TimeoutError, MiniOniError, OSError):
             self.ejecutar(self.detener()).result(timeout)
         self._baja()

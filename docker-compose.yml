@@ -1,0 +1,133 @@
+# Laboratorio MiniOni con redes segmentadas (semana 4, ISO/IEC 27033).
+#
+# Se maneja con laboratorio_docker.py (preparar, iniciar, probar, estado, detener),
+# que define MINIONI_CARPETA_CLAVES y entrega la contraseña a los relays.
+# Diseño completo en docs/SEMANA4_DOCKER.md.
+#
+#   red_publica        10.10.7.0/24  tu equipo (puerto publicado) <-> puerta
+#   red_cliente        10.10.1.0/24  puerta <-> entrada1          (interna)
+#   red_entrada_medio  10.10.2.0/24  entrada1 <-> medio1           (interna)
+#   red_medio_salida   10.10.3.0/24  medio1   <-> salida1          (interna)
+#   red_destinos       10.10.9.0/24  salida1  <-> web del laboratorio (interna)
+#
+# Cada red une SOLO a los dos nodos que deben hablarse: un nodo no puede saltarse
+# al siguiente ni llegar a Internet. Los relays y la web solo están en redes internas.
+#
+# Docker no publica puertos de una red interna, y en Docker Desktop una red no interna
+# sale a Internet aunque tenga el NAT desactivado. Por eso existe la puerta: es el único
+# contenedor en una red con salida, no tiene claves y solo reenvía el puerto hacia entrada1.
+
+name: minioni
+
+x-endurecido: &endurecido
+  image: minioni:semana4
+  read_only: true                     # nada se escribe en el disco del contenedor
+  user: "10001:10001"                 # sin root
+  cap_drop: [ALL]                     # sin capacidades del kernel
+  security_opt: ["no-new-privileges:true"]
+  pids_limit: 64
+  mem_limit: 256m
+  cpus: 0.5
+  restart: "no"
+  logging:
+    driver: none                      # Docker NO guarda la consola en disco: cero registros
+  tmpfs:
+    # /tmp solo en memoria, privado del usuario 10001. El relay escribe ahí por un instante
+    # la clave TLS (cifrada con una contraseña aleatoria de un solo uso) porque el módulo
+    # ssl solo la carga desde un archivo (transporte.contexto_servidor): nunca toca el disco.
+    - /tmp:rw,noexec,nosuid,nodev,size=1m,uid=10001,gid=10001,mode=0700
+
+x-relay: &relay
+  <<: *endurecido
+  stdin_open: true                    # la contraseña llega por la entrada estándar, una vez
+
+services:
+  entrada1:
+    <<: *relay
+    build:
+      context: .
+      args:
+        BASE: ${MINIONI_IMAGEN_BASE:-python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f}
+    container_name: minioni-entrada1
+    command: ["python", "ejecutar_relay.py", "--apodo", "entrada1",
+              "--directorio", "config/directorio.docker.json", "--contrasena-por-entrada"]
+    volumes:
+      - ./config/autoridad.pub:/app/config/autoridad.pub:ro
+      - ./config/directorio.docker.json:/app/config/directorio.docker.json:ro
+      - ${MINIONI_CARPETA_CLAVES:?usa python laboratorio_docker.py iniciar}/entrada1:/app/claves/entrada1:ro
+    networks:
+      red_cliente: {ipv4_address: 10.10.1.10}
+      red_entrada_medio: {ipv4_address: 10.10.2.11}
+
+  medio1:
+    <<: *relay
+    container_name: minioni-medio1
+    command: ["python", "ejecutar_relay.py", "--apodo", "medio1",
+              "--directorio", "config/directorio.docker.json", "--contrasena-por-entrada"]
+    volumes:
+      - ./config/autoridad.pub:/app/config/autoridad.pub:ro
+      - ./config/directorio.docker.json:/app/config/directorio.docker.json:ro
+      - ${MINIONI_CARPETA_CLAVES:?usa python laboratorio_docker.py iniciar}/medio1:/app/claves/medio1:ro
+    networks:
+      red_entrada_medio: {ipv4_address: 10.10.2.10}
+      red_medio_salida: {ipv4_address: 10.10.3.11}
+
+  salida1:
+    <<: *relay
+    container_name: minioni-salida1
+    command: ["python", "ejecutar_relay.py", "--apodo", "salida1",
+              "--directorio", "config/directorio.docker.json",
+              "--politica", "config/politica_salida.docker.json", "--contrasena-por-entrada"]
+    volumes:
+      - ./config/autoridad.pub:/app/config/autoridad.pub:ro
+      - ./config/directorio.docker.json:/app/config/directorio.docker.json:ro
+      - ./config/politica_salida.docker.json:/app/config/politica_salida.docker.json:ro
+      - ${MINIONI_CARPETA_CLAVES:?usa python laboratorio_docker.py iniciar}/salida1:/app/claves/salida1:ro
+    networks:
+      red_medio_salida: {ipv4_address: 10.10.3.10}
+      red_destinos: {ipv4_address: 10.10.9.11}
+
+  web:
+    <<: *endurecido
+    container_name: minioni-web
+    command: ["python", "docker/servidor_web.py", "--escuchar", "10.10.9.20"]
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "80"   # puerto 80 sin ser root
+    networks:
+      red_destinos: {ipv4_address: 10.10.9.20}
+
+  puerta:
+    <<: *endurecido
+    container_name: minioni-puerta
+    command: ["python", "docker/puerta.py", "--escuchar", "10.10.7.10"]
+    networks:
+      red_publica: {ipv4_address: 10.10.7.10}
+      red_cliente: {ipv4_address: 10.10.1.11}
+    ports:
+      - "127.0.0.1:9001:9001"         # solo tu equipo llega a la entrada; nunca la red local
+
+networks:
+  red_publica:
+    driver: bridge
+    driver_opts:
+      # En Linux esto basta para que no salga a Internet. En Docker Desktop no alcanza,
+      # y por eso aquí solo está la puerta, que no tiene claves.
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config: [{subnet: 10.10.7.0/24}]
+  red_cliente:
+    internal: true
+    ipam:
+      config: [{subnet: 10.10.1.0/24}]
+  red_entrada_medio:
+    internal: true
+    ipam:
+      config: [{subnet: 10.10.2.0/24}]
+  red_medio_salida:
+    internal: true
+    ipam:
+      config: [{subnet: 10.10.3.0/24}]
+  red_destinos:
+    internal: true
+    ipam:
+      config: [{subnet: 10.10.9.0/24}]

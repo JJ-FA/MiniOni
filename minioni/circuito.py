@@ -35,8 +35,23 @@ from .transporte import Enlace
 
 
 def elegir_ruta(directorio: Directorio) -> list[Relay]:
-    """3 relays distintos al azar (CSPRNG); el último es de salida y, si se puede, los otros no."""
+    """3 relays distintos al azar (CSPRNG); el último es de salida y, si se puede, los otros no.
+
+    Si el directorio marca relays de entrada (semana 4), el primero sale de ellos y el
+    del medio de los que no son ni entrada ni salida: con redes segmentadas es el único
+    orden en que cada salto llega al siguiente.
+    """
     azar = secrets.SystemRandom()
+    entradas = [r for r in directorio.relays if r.entrada]
+    if entradas:
+        ultimo = azar.choice([r for r in directorio.relays if r.salida])
+        primero = azar.choice(entradas)
+        medios = [r for r in directorio.relays if not r.entrada and not r.salida]
+        if not medios:
+            medios = [r for r in entradas if r is not primero]
+        if not medios:
+            raise HandshakeFallido("el directorio no tiene relays intermedios")
+        return [primero, azar.choice(medios), ultimo]
     ultimo = azar.choice([r for r in directorio.relays if r.salida])
     resto = [r for r in directorio.relays if r is not ultimo]
     no_salida = [r for r in resto if not r.salida]
@@ -50,9 +65,13 @@ def elegir_ruta(directorio: Directorio) -> list[Relay]:
 
 
 class CircuitoCliente:
-    def __init__(self, timeout: float = TIMEOUT_HANDSHAKE_S, ctx: ssl.SSLContext | None = None) -> None:
+    def __init__(self, timeout: float = TIMEOUT_HANDSHAKE_S, ctx: ssl.SSLContext | None = None,
+                 entrada_via: tuple[str, int] | None = None) -> None:
         self._timeout = timeout
         self._ctx = ctx
+        # Dirección alternativa SOLO para el primer salto (Docker publica la entrada en
+        # 127.0.0.1). Los EXTEND siguen usando las direcciones firmadas del directorio.
+        self._entrada_via = entrada_via
         self._capas: list[CapaSalto] = []
         self.enlace: Enlace | None = None
         self.circ_id: int | None = None
@@ -90,7 +109,7 @@ class CircuitoCliente:
     async def _construir(self, ruta: list[Relay], al_avanzar) -> None:
         avisar = al_avanzar or (lambda i, relay, listo: None)
         avisar(1, ruta[0], False)
-        self.enlace = await transporte.conectar(ruta[0], self._ctx, self._timeout)
+        self.enlace = await transporte.conectar(ruta[0], self._ctx, self._timeout, self._entrada_via)
         self.circ_id = secrets.randbelow(2**32 - 1) + 1
         estado, solicitud = HandshakeCliente.iniciar(ruta[0].clave_cebolla)
         await self.enlace.enviar(Celda(self.circ_id, Comando.CREATE, solicitud))

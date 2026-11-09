@@ -1,5 +1,5 @@
 [
-  {"apodo": "entrada1", "host": "10.10.1.10", "puerto": 9001, "salida": false},
-  {"apodo": "medio1",   "host": "10.10.2.10", "puerto": 9002, "salida": false},
-  {"apodo": "salida1",  "host": "10.10.3.10", "puerto": 9003, "salida": true}
+  {"apodo": "entrada1", "host": "10.10.1.10", "puerto": 9001, "salida": false, "entrada": true},
+  {"apodo": "medio1",   "host": "10.10.2.10", "puerto": 9002, "salida": false, "entrada": false},
+  {"apodo": "salida1",  "host": "10.10.3.10", "puerto": 9003, "salida": true,  "entrada": false}
 ]

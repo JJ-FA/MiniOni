@@ -3,7 +3,7 @@
 Uso (con el entorno activo, desde la carpeta MiniOni):
     python revisar_secretos.py
 
-Hace seis comprobaciones:
+Hace siete comprobaciones:
   1. detect-secrets sobre los archivos que irían al repositorio (respeta .gitignore):
      no debe haber contraseñas, tokens ni claves escritos en el código o la configuración.
   2. .gitignore protege las claves privadas (claves/ y *.key).
@@ -17,9 +17,11 @@ Hace seis comprobaciones:
      (git log --all -p). Un secreto que se commiteó y luego se borró sigue en el
      historial; también se reporta cualquier archivo que .gitignore excluye (por
      ejemplo un .key) y que igual se commiteó. Sin repositorio o sin git, solo avisa.
+  7. Si hay Dockerfile (semana 4): .dockerignore excluye claves/, *.key y config/, para
+     que ninguna clave entre a la imagen (una clave copiada queda en sus capas).
 
 Nunca imprime el secreto encontrado: solo archivo, línea (o commit) y tipo.
-Termina con código 0 si 1-3 y 6 pasan, 1 si no.
+Termina con código 0 si 1-3, 6 y 7 pasan, 1 si no.
 """
 
 from __future__ import annotations
@@ -110,6 +112,25 @@ def comprobar_gitignore() -> bool:
         print(f"  FALTA en .gitignore: {p}")
     if not faltan:
         print("  .gitignore excluye claves/ y *.key")
+    return not faltan
+
+
+PATRONES_DOCKERIGNORE = ("claves/", "**/*.key", "config/")
+
+
+def comprobar_dockerignore() -> bool:
+    """Lo que se copia al construir la imagen de Docker nunca debe incluir claves."""
+    if not (RAIZ / "Dockerfile").exists():
+        print("  No hay Dockerfile: nada que revisar")
+        return True
+    archivo = RAIZ / ".dockerignore"
+    lineas = archivo.read_text(encoding="utf-8").splitlines() if archivo.exists() else []
+    patrones = {l.strip() for l in lineas if l.strip() and not l.strip().startswith("#")}
+    faltan = [p for p in PATRONES_DOCKERIGNORE if p not in patrones]
+    for p in faltan:
+        print(f"  FALTA en .dockerignore: {p}")
+    if not faltan:
+        print("  .dockerignore excluye claves/, *.key y config/: ninguna clave entra a la imagen")
     return not faltan
 
 
@@ -291,6 +312,8 @@ def main() -> int:
     avisar_historial()
     print("6. Secretos en el historial de Git")
     resultados.append(comprobar_historial())
+    print("7. Imagen de Docker sin claves (.dockerignore)")
+    resultados.append(comprobar_dockerignore())
     todo = all(resultados)
     print("\nRevisión de secretos: " + ("sin secretos expuestos." if todo else "HAY PROBLEMAS (ver arriba)."))
     return 0 if todo else 1

@@ -189,15 +189,22 @@ class Enlace:
 
 
 async def conectar(relay, ctx: ssl.SSLContext | None = None,
-                   timeout: float = TIMEOUT_HANDSHAKE_S) -> Enlace:
+                   timeout: float = TIMEOUT_HANDSHAKE_S,
+                   direccion: tuple[str, int] | None = None) -> Enlace:
     """Abre un enlace TLS 1.3 hacia `relay` (entrada del directorio) y verifica su huella.
+
+    `direccion` cambia solo A DÓNDE se conecta (por ejemplo el puerto que Docker
+    publica en 127.0.0.1 para el relay de entrada); la identidad se sigue
+    comprobando con la huella del directorio, así que un intermediario en esa
+    dirección no puede hacerse pasar por el relay.
 
     Lanza TLSInvalido si el handshake TLS falla o la huella no coincide, y
     EnlaceCerrado si el relay no responde. No se envía nada antes del pinning.
     """
+    host, puerto = direccion if direccion is not None else (relay.host, relay.puerto)
     try:
         reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(relay.host, relay.puerto, ssl=ctx or contexto_cliente(),
+            asyncio.open_connection(host, puerto, ssl=ctx or contexto_cliente(),
                                     ssl_handshake_timeout=timeout),
             timeout,
         )

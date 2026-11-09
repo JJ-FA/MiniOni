@@ -111,6 +111,42 @@
   directorio visto por el proxy (anti-rollback); no es un dato del usuario.
   Si se borra, el proxy acepta de nuevo cualquier versión vigente.
 
+## Decisiones del laboratorio Docker (semana 4)
+
+- **La puerta sí puede llegar a Internet en Docker Desktop.** Docker no publica
+  puertos de una red `internal: true`, y allí una red no interna sale a Internet aunque
+  tenga el NAT desactivado. Por eso `docker/puerta.py` es el único contenedor en una
+  red con salida (`red_publica`). No tiene claves, su destino es fijo y solo ve tráfico
+  TLS cifrado. Los relays y la web siguen solo en redes internas, y la prueba de
+  segmentación no conecta una sonda a `red_publica`, porque su resultado depende de
+  la plataforma.
+- **`--entrada-via` solo cambia la dirección del primer salto.** La identidad la
+  sigue dando la huella TLS del directorio; además solo se acepta `127.x.x.x`.
+- **La ruta ya no se elige al azar entre entrada y medio** cuando el directorio marca
+  la entrada (como *Guard* en Tor): con 3 relays la ruta es siempre la misma. Con más
+  relays por posición vuelve a haber elección al azar dentro de cada posición.
+- **`/tmp` en memoria.** El relay escribe ahí la clave TLS un instante, cifrada con
+  una contraseña aleatoria de un solo uso, porque `ssl` solo carga claves desde un
+  archivo. Es un `tmpfs` privado (modo 0700, sin ejecución) que nunca toca un disco.
+- **La contraseña viaja por `docker attach`.** Pasa por el cliente de Docker de tu
+  equipo hacia la entrada estándar del relay; no se guarda en archivos, variables ni
+  en la imagen. Quien controle Docker en tu equipo ya controla los contenedores, así
+  que no es un permiso nuevo.
+- **Sin registros, también para depurar.** Con `logging: none` no existe
+  `docker logs`; para ver la consola se usa `laboratorio_docker.py eventos APODO`, que
+  la muestra en vivo sin guardarla.
+- **Subredes 10.10.x.** Si la red de tu universidad o tu casa usa esas mismas
+  subredes, hay que cambiarlas en `docker-compose.yml` y `config/relays.json` (y
+  volver a `preparar`).
+- **En Linux** las claves deben poder leerse con el usuario 10001 del contenedor
+  (en Windows con Docker Desktop no hace falta).
+- **El digest de la imagen no se actualiza solo.** Fijarlo evita cambios sin aviso,
+  pero los parches de `python:3.14-slim` solo llegan si alguien repite el procedimiento
+  de `SEMANA4_DOCKER.md` 4.3.
+- **El panel no muestra el avance detallado de la construcción.** La salida de Docker
+  se descarta para no llevar texto externo a la ventana; la primera construcción
+  puede tardar varios minutos con el mensaje de progreso fijo.
+
 ## Limitaciones del entorno
 
 - **OpenSSL que trae Python.** El TLS 1.3 entre nodos usa el OpenSSL incluido en

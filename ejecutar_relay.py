@@ -13,6 +13,11 @@ Uso (desde la carpeta del proyecto, una ventana de PowerShell por relay):
    excepciones de red; si no existe, solo 80 y 443 hacia IP públicas).
 5. Ctrl+C: apagado limpio (destruye los circuitos).
 
+En Docker (semana 4) el relay no tiene teclado: con --contrasena-por-entrada lee
+la contraseña de UNA línea de la entrada estándar, que es el mismo canal que el
+teclado. laboratorio_docker.py la pide una vez con getpass y la escribe ahí; nunca
+va en argumentos, variables de entorno ni archivos (NIST SSDF PS.1.1).
+
 La consola solo muestra eventos del catálogo de minioni/consola.py: nunca
 IP, puertos de clientes, destinos ni contenido (ASVS V16.2.5).
 """
@@ -36,6 +41,20 @@ from minioni.relay import cargar_relay, verificar_identidad
 
 APODO_VALIDO = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 CARPETA_CONFIG = Path("config")
+MAX_LARGO_CONTRASENA = 1024
+
+
+def leer_contrasena_por_entrada() -> str:
+    """Una línea de la entrada estándar, sin eco ni aviso (no hay terminal en Docker).
+
+    Se lee como máximo MAX_LARGO_CONTRASENA caracteres: una entrada sin fin de línea
+    no puede hacer crecer la memoria sin límite (ASVS 5.0 V2.4.1).
+    """
+    linea = sys.stdin.readline(MAX_LARGO_CONTRASENA + 1)
+    contrasena = linea.rstrip("\r\n")
+    if not contrasena or len(contrasena) > MAX_LARGO_CONTRASENA:
+        raise ClaveInvalida("no llegó una contraseña válida por la entrada estándar")
+    return contrasena
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -46,6 +65,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="IP local donde escuchar (solo para Docker, semana 4); por defecto la del directorio")
     p.add_argument("--politica", default=str(CARPETA_CONFIG / "politica_salida.json"),
                    help="política del nodo de salida (por defecto config/politica_salida.json)")
+    p.add_argument("--contrasena-por-entrada", action="store_true",
+                   help="lee la contraseña de una línea de la entrada estándar (Docker, sin teclado)")
     args = p.parse_args(argv)
 
     # Lista blanca, la misma del directorio (ASVS 5.0 V2.2.1). Antes el apodo se repetía
@@ -95,8 +116,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     try:
-        nodo = cargar_relay(args.apodo, d, claves, getpass.getpass("Contraseña de las claves: "),
-                            politica=politica)
+        contrasena = (leer_contrasena_por_entrada() if args.contrasena_por_entrada
+                      else getpass.getpass("Contraseña de las claves: "))
+        nodo = cargar_relay(args.apodo, d, claves, contrasena, politica=politica)
+        del contrasena
     except ClaveInvalida as e:
         print(f"Error: {e.mensaje_publico}", file=sys.stderr)
         return 1

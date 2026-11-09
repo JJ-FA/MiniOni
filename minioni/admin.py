@@ -4,6 +4,7 @@ Uso (desde la carpeta del proyecto):
     python minioni_admin.py generar-autoridad
     python minioni_admin.py generar-relay --apodo entrada1
     python minioni_admin.py publicar-directorio --version 1 --dias 7
+    python minioni_admin.py publicar-directorio --version 1 --salida directorio.docker.json   (Docker)
     python minioni_admin.py verificar-directorio
     python minioni_admin.py donde-estan-las-claves
     python minioni_admin.py revisar-certificados
@@ -206,6 +207,7 @@ def armar_directorio(lista_relays: list, claves: Path, version: int, dias: int) 
             "host": r.get("host"),
             "puerto": r.get("puerto"),
             "salida": r.get("salida"),
+            "entrada": r.get("entrada", False),
             "clave_cebolla": (carpeta / "cebolla.pub").read_text(encoding="ascii").strip(),
             "huella_tls": huella_certificado(carpeta / "tls.crt"),
         })
@@ -217,15 +219,31 @@ def armar_directorio(lista_relays: list, claves: Path, version: int, dias: int) 
     }
 
 
+SALIDA_DIRECTORIO = re.compile(r"directorio\.[a-z0-9_-]{1,32}\.json")
+
+
+def destino_directorio(config: Path, nombre: str | None) -> Path:
+    """Archivo donde se guarda el directorio firmado, siempre dentro de config/.
+
+    Solo se acepta un NOMBRE con la forma directorio.<algo>.json (lista blanca): nada de
+    rutas, para que el comando no pueda sobrescribir archivos fuera de config/.
+    """
+    if nombre is None:
+        return config / "directorio.firmado.json"
+    if not SALIDA_DIRECTORIO.fullmatch(nombre) or nombre == "directorio.atacado.json":
+        raise SystemExit("Error: --salida debe ser un nombre como directorio.docker.json (sin carpetas).")
+    return config / nombre
+
+
 def publicar_directorio(contrasena: str, claves: Path, config: Path, version: int, dias: int,
-                        relays: Path | None = None) -> Path:
+                        relays: Path | None = None, salida: str | None = None) -> Path:
+    destino = destino_directorio(config, salida)   # se valida antes de tocar ninguna clave
     if not (claves / "autoridad" / "autoridad.key").exists():
         raise SystemExit("Error: primero crea la autoridad (python minioni_admin.py generar-autoridad).")
     lista = json.loads(Path(relays or config / "relays.json").read_text(encoding="utf-8"))
     directorio = armar_directorio(lista, claves, version, dias)
     privada = ak.cargar_privada(claves / "autoridad" / "autoridad.key", contrasena, "ed25519")
     firmado = dirmod.firmar(directorio, Ed25519PrivateKey.from_private_bytes(privada))
-    destino = config / "directorio.firmado.json"
     destino.write_bytes(firmado)
     return destino
 
@@ -270,7 +288,8 @@ def preparar_laboratorio(contrasena: str, claves: Path, config: Path, reiniciar:
     return ruta
 
 
-def _version_siguiente(config: Path) -> int:
+def _version_siguiente(config: Path, directorio: str = "directorio.firmado.json",
+                       ultima: str = "ultima_version") -> int:
     """Versión para un directorio nuevo: por encima de la más alta conocida en este equipo.
 
     Si se regeneran las claves con un directorio versión 1, el cliente que ya vio la 2
@@ -279,10 +298,10 @@ def _version_siguiente(config: Path) -> int:
     """
     from .proxy import leer_ultima_version
     vistas = [0]
-    if (config / "ultima_version").exists():
-        vistas.append(leer_ultima_version(config / "ultima_version"))
+    if (config / ultima).exists():
+        vistas.append(leer_ultima_version(config / ultima))
     try:
-        version = json.loads((config / "directorio.firmado.json").read_text(encoding="utf-8"))["directorio"]["version"]
+        version = json.loads((config / directorio).read_text(encoding="utf-8"))["directorio"]["version"]
         if isinstance(version, int) and not isinstance(version, bool) and 1 <= version <= 2**31:
             vistas.append(version)
     except (OSError, ValueError, KeyError, TypeError):
@@ -370,6 +389,8 @@ def main(argv: list[str] | None = None) -> int:
     pub.add_argument("--dias", type=int, default=7)
     pub.add_argument("--relays", default=str(CARPETA_CONFIG / "relays.json"),
                      help="lista de relays (por defecto config/relays.json; local: config/relays.local.json)")
+    pub.add_argument("--salida", default=None,
+                     help="nombre del archivo en config/ (por defecto directorio.firmado.json; Docker: directorio.docker.json)")
     ver = sub.add_parser("verificar-directorio", help="comprueba firma, formato y vigencia")
     ver.add_argument("--archivo", default=str(CARPETA_CONFIG / "directorio.firmado.json"),
                      help="directorio a verificar (por defecto config/directorio.firmado.json)")
@@ -401,10 +422,11 @@ def main(argv: list[str] | None = None) -> int:
             huella = generar_relay(args.apodo, _pedir_contrasena(True), claves)
             print(f"Relay '{args.apodo}' creado. Huella TLS: {huella}")
         elif args.cmd == "publicar-directorio":
+            destino_directorio(CARPETA_CONFIG, args.salida)   # nombre inválido: error antes de pedir la contraseña
             for intento in range(1, 4):
                 try:
                     ruta = publicar_directorio(_pedir_contrasena(False), claves, CARPETA_CONFIG,
-                                               args.version, args.dias, Path(args.relays))
+                                               args.version, args.dias, Path(args.relays), args.salida)
                     break
                 except ClaveInvalida:
                     # Herramienta local del administrador: decir "contraseña incorrecta" no da

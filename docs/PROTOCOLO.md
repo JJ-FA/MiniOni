@@ -186,6 +186,15 @@ Ver el formato completo en `minioni/directorio.py`. Se firma
 espacios). El cliente verifica en este orden: tamaño ≤ 64 KB → JSON sin
 claves duplicadas → **firma** → estructura → vigencia → versión mínima.
 
+**Campo `entrada` (semana 4).** Cada relay puede llevar `"entrada": true|false`
+(opcional; sin él vale `false`, así que los directorios anteriores siguen siendo
+válidos). Si algún relay lo tiene en `true`, el cliente arma la ruta como
+entrada → intermedio (ni entrada ni salida) → salida, que es el único orden posible
+con redes segmentadas. Un relay con `entrada` y `salida` en `true` hace inválido el
+directorio: vería la IP del cliente y el destino. El cliente puede llegar a la
+entrada por otra dirección (`--entrada-via`, puerto publicado por Docker), pero la
+huella TLS se verifica igual.
+
 ## 7. Proxy SOCKS5 local (RFC 1928, subconjunto)
 
 El proxy escucha **solo** en `127.0.0.1` (por defecto puerto 9050) y acepta:

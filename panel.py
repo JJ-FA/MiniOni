@@ -12,6 +12,10 @@ directorio local. Solo biblioteca estándar (tkinter): ninguna dependencia nueva
 Privacidad (ASVS V16.2.5): el registro de eventos muestra exactamente los
 eventos genéricos de la consola, nunca IP, dominios ni puertos de clientes.
 La contraseña se usa una vez para descifrar las claves y se borra del campo.
+
+Con el selector Local / Docker, la misma ventana maneja el laboratorio de la
+semana 4: los relays corren en contenedores con redes segmentadas y la
+contraseña se escribe en la entrada estándar de cada relay.
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ import tkinter.font as tkfont
 import webbrowser
 from pathlib import Path
 
+import laboratorio_docker
 from minioni import almacen_claves as ak
 from minioni import consola
 from minioni.constantes import HOST_PROXY, PUERTO_PROXY
@@ -47,6 +52,8 @@ VERDE = "#5DBB63"
 ALERTA = "#FF4D4D"
 
 ANCHO = 980
+URL_LOCAL = "https://example.com"
+URL_DOCKER = "http://web/"
 CARPETA_PROYECTO = Path(__file__).resolve().parent
 EVENTOS_ALERTA = {"CIRCUITO_FALLIDO", "CERTIFICADO_POR_VENCER", "DESTINO_BLOQUEADO", "RELAY_CAIDO", "CELDA_RECHAZADA",
                   "LIMITE_ALCANZADO", "ERROR_INTERNO", "DIRECTORIO_INVALIDO"}
@@ -90,6 +97,19 @@ def tarjeta(padre, **kw) -> tk.Frame:
 
 def seccion(padre, texto: str) -> tk.Label:
     return tk.Label(padre, text=f"// {texto}", font=F["seccion"], fg=VINO_CLARO, bg=padre["bg"])
+
+
+def texto_matriz(filas: list[dict]) -> str:
+    """Matriz de segmentación en columnas, para mostrarla con fuente monoespaciada."""
+    objetivos = next((list(f["alcanza"]) for f in filas if f["alcanza"]), [])
+    lineas = [f"{'red':<19}" + "".join(f"{o:<10}" for o in objetivos) + "resultado"]
+    for f in filas:
+        if f["alcanza"] is None:
+            lineas.append(f"{f['red']:<19}FALLO (la sonda no pudo conectarse a la red)")
+            continue
+        celdas = "".join(f"{'sí' if f['alcanza'][o] else 'no':<10}" for o in objetivos)
+        lineas.append(f"{f['red']:<19}{celdas}{'OK' if f['ok'] else 'FALLO'}")
+    return "\n".join(lineas)
 
 
 class Boton(tk.Frame):
@@ -165,6 +185,7 @@ class Panel:
                                                  outline=TEXTO2, width=1)
         self._pildora = c.create_text(ANCHO - 176, 51, text="●  RED DETENIDA", font=F["seccion"], fill=TEXTO2)
         self._canvas_cab = c
+        self._selector_modo(c)
 
     def _arranque(self, cuerpo) -> None:
         seccion(cuerpo, "ARRANQUE").pack(anchor="w", pady=(10, 6))
@@ -182,8 +203,67 @@ class Panel:
         self.b_publicar.pack(side="right")
         self.b_iniciar = Boton(fila, "▶  Iniciar red", self.iniciar_o_detener, principal=True)
         self.b_iniciar.pack(side="right", padx=8)
-        self.info = tk.Label(t, text="", font=F["chico"], fg=TEXTO2, bg=TARJETA, anchor="w")
-        self.info.pack(fill="x", pady=(8, 0))
+        linea = tk.Frame(t, bg=TARJETA)
+        linea.pack(fill="x", pady=(8, 0))
+        self.info = tk.Label(linea, text="", font=F["chico"], fg=TEXTO2, bg=TARJETA, anchor="w", justify="left")
+        self.info.pack(side="left", fill="x", expand=True)
+        # Solo se muestra en modo Docker (cambiar_modo).
+        self.c_internet = tk.Checkbutton(linea, text="Internet solo para el relay de salida", variable=self.internet,
+                                         bg=TARJETA, fg=TEXTO, selectcolor=NEGRO, font=F["chico"],
+                                         activebackground=TARJETA, activeforeground=TEXTO,
+                                         disabledforeground="#55555C", highlightthickness=0, state="disabled")
+
+    def _selector_modo(self, c: tk.Canvas) -> None:
+        """Local / Docker en la cabecera: así la ventana no crece y sigue cabiendo en 1080 px."""
+        c.create_text(640, 34, text="DÓNDE CORRE LA RED", anchor="e", font=F["mono_chico"], fill=TEXTO2)
+        fila = tk.Frame(c, bg=NEGRO)
+        c.create_window(640, 60, window=fila, anchor="e")
+        # Las variables se guardan en self y se atan a esta raíz: Tk las libera con la ventana.
+        self.modo = tk.StringVar(master=self.raiz, value="local")
+        self.internet = tk.BooleanVar(master=self.raiz, value=False)
+        self.radios = {}
+        for valor, texto in (("local", "Local"), ("docker", "Docker")):
+            r = tk.Radiobutton(fila, text=texto, value=valor, variable=self.modo, command=self.cambiar_modo,
+                               indicatoron=False, selectcolor=VINO, bg=TARJETA, fg=TEXTO, font=F["chico"],
+                               activebackground=TARJETA_HOVER, activeforeground="#FFFFFF", cursor="hand2",
+                               disabledforeground="#55555C", relief="flat", bd=1, padx=14, pady=3)
+            r.pack(side="left", padx=(4, 0))
+            self.radios[valor] = r
+        if not self.control.docker_disponible:
+            self.radios["docker"].configure(state="disabled")
+
+    def _estado_selector(self) -> None:
+        libre = not self._ocupado and not self.control.instantanea["en_marcha"]
+        docker = self.modo.get() == "docker"
+        self.radios["local"].configure(state="normal" if libre else "disabled")
+        self.radios["docker"].configure(state="normal" if libre and self.control.docker_disponible else "disabled")
+        self.c_internet.configure(state="normal" if libre and docker else "disabled")
+        self.b_segmentacion.activo(docker and not self._ocupado)
+
+    def cambiar_modo(self) -> None:
+        if self._ocupado:
+            self.modo.set(self.control.modo)
+            return
+        try:
+            self.control.cambiar_modo(self.modo.get())
+        except ConfiguracionInvalida as e:
+            self.modo.set(self.control.modo)
+            self.info.configure(text=mensaje_error(e), fg=ALERTA)
+            return
+        docker = self.control.modo == "docker"
+        if docker:
+            self.c_internet.pack(side="right")
+        else:
+            self.internet.set(False)
+            self.c_internet.pack_forget()
+        # Con la casilla al lado, un mensaje largo usa dos líneas en vez de cortarse.
+        self.info.configure(wraplength=ANCHO - 340 if docker else 0)
+        self.b_publicar.texto("Firmar directorio Docker" if docker else "Publicar directorio local")
+        if self.url.get().strip() in (URL_LOCAL, URL_DOCKER):
+            self.url.delete(0, "end")
+            self.url.insert(0, URL_DOCKER if docker else URL_LOCAL)
+        self._estado_selector()
+        self.revisar_directorio()
 
     def _construir_nodos(self, relays: list[tuple[str, bool]]) -> None:
         if relays == self._apodos and self._tarjetas:
@@ -243,7 +323,7 @@ class Panel:
         self.b_eco.pack(side="left")
         self.url = tk.Entry(fila, font=F["texto"], bg=NEGRO, fg=TEXTO, insertbackground=TEXTO, relief="flat",
                             highlightthickness=1, highlightbackground=LINEA, highlightcolor=VINO, width=30)
-        self.url.insert(0, "https://example.com")
+        self.url.insert(0, URL_LOCAL)
         self.url.pack(side="left", padx=(12, 8), ipady=6)
         self.url.bind("<Return>", lambda _: self.probar_url())
         self.b_url = Boton(fila, "↗  Abrir por MiniOni", self.probar_url)
@@ -254,6 +334,9 @@ class Panel:
         self.b_verificar.pack(side="left")
         Boton(fila2, "≡  Guía de Firefox", self.guia_firefox).pack(side="left", padx=8)
         Boton(fila2, "⧉  Copiar comando curl", self.copiar_curl).pack(side="left")
+        self.b_segmentacion = Boton(fila2, "▦  Probar segmentación", self.probar_segmentacion)
+        self.b_segmentacion.pack(side="left", padx=8)
+        self.b_segmentacion.activo(False)
         self.resultado = tk.Label(t, text="Inicia la red para probar el circuito.", font=F["chico"],
                                   fg=TEXTO2, bg=TARJETA, anchor="w", justify="left", wraplength=ANCHO - 90)
         self.resultado.pack(fill="x", pady=(10, 0))
@@ -283,6 +366,7 @@ class Panel:
         self._ocupado = si
         for b in (self.b_iniciar, self.b_publicar, self.b_eco, self.b_url, self.b_verificar):
             b.activo(not si)
+        self._estado_selector()
         if texto:
             self.info.configure(text=texto, fg=TEXTO2)
 
@@ -308,6 +392,11 @@ class Panel:
         if not contrasena:
             self.info.configure(text="Escribe la contraseña de las claves.", fg=ALERTA)
             return
+        if self.control.modo == "docker":
+            self._ocupar(True, "Levantando el laboratorio Docker (la primera vez tarda varios minutos)…")
+            self._accion(self.control.iniciar(contrasena, internet=self.internet.get()),
+                         self._iniciada, self._error_arranque)
+            return
         self._ocupar(True, "Descifrando claves y levantando los relays y el proxy…")
         self._accion(self.control.iniciar(contrasena), self._iniciada, self._error_arranque)
 
@@ -317,7 +406,8 @@ class Panel:
         self.b_publicar.activo(False)
         d = self.control.directorio
         self.info.configure(text=f"Red en marcha: {n} relays y el proxy SOCKS5 en {HOST_PROXY}:"
-                                 f"{self.control.instantanea['puerto_proxy']}  ·  directorio v{d.version}",
+                                 f"{self.control.instantanea['puerto_proxy']}  ·  directorio v{d.version}"
+                                 + ("  ·  en Docker" if self.control.modo == "docker" else ""),
                             fg=VERDE)
         self.resultado.configure(text="Listo. Prueba el circuito o abre una página por MiniOni.", fg=TEXTO2)
 
@@ -339,18 +429,22 @@ class Panel:
             self.info.configure(text="Escribe la contraseña de la autoridad para firmar el directorio.", fg=ALERTA)
             return
         self.clave.delete(0, "end")
-        self._ocupar(True, "Firmando un directorio nuevo con los relays en 127.0.0.1…")
+        docker = self.control.modo == "docker"
+        nombre = "de Docker" if docker else "local"
+        self._ocupar(True, "Firmando un directorio nuevo con los relays en "
+                           + ("las redes de Docker…" if docker else "127.0.0.1…"))
+        firmar = self.control.publicar_directorio_docker if docker else self.control.publicar_directorio_local
 
         async def tarea():
             import asyncio
-            return await asyncio.to_thread(self.control.publicar_directorio_local, contrasena)
+            return await asyncio.to_thread(firmar, contrasena)
 
         def ok(version):
             self._ocupar(False)
             self.revisar_directorio()
-            self.info.configure(text=f"Directorio local v{version} publicado. Ya puedes iniciar la red.",
+            self.info.configure(text=f"Directorio {nombre} v{version} publicado. Ya puedes iniciar la red.",
                                 fg=VERDE)
-            self._evento_local("panel", f"directorio local v{version} publicado")
+            self._evento_local("panel", f"directorio {nombre} v{version} publicado")
         self._accion(tarea(), ok, self._error_arranque)
 
     def alternar(self, apodo: str) -> None:
@@ -396,10 +490,32 @@ class Panel:
                      lambda e: (self._ocupar(False),
                                 self.resultado.configure(text=f"Fallo: {mensaje_error(e)}", fg=ALERTA)))
 
+    def probar_segmentacion(self) -> None:
+        if self._ocupado:
+            return
+        if not self.control.instantanea["en_marcha"]:
+            self.resultado.configure(text="Primero inicia la red en modo Docker.", fg=ALERTA)
+            return
+        self._ocupar(True)
+        self.resultado.configure(text="Conectando un contenedor de prueba a cada red…", fg=TEXTO2)
+        self._accion(self.control.probar_segmentacion(), self._matriz,
+                     lambda e: (self._ocupar(False),
+                                self.resultado.configure(text=f"Fallo: {mensaje_error(e)}", fg=ALERTA)))
+
+    def _matriz(self, filas: list[dict]) -> None:
+        self._ocupar(False)
+        ok = all(f["ok"] for f in filas)
+        self.resultado.configure(text=("Segmentación correcta: desde cada red solo se alcanza un servicio."
+                                       if ok else "La segmentación NO es la esperada."),
+                                 fg=VERDE if ok else ALERTA)
+        self._evento_local("panel", "segmentación: " + ("correcta" if ok else "FALLIDA"), alerta=not ok)
+        self._bloque_en_eventos(texto_matriz(filas))
+
     def _informe(self, inf) -> None:
         self._ocupar(False)
         registro = self.log.get("1.0", "end")
-        en_panel = inf.testigo in registro or (inf.dominio != "" and not inf.dominio[0].isdigit()
+        # Un nombre sin punto («web», en el laboratorio) aparece en cualquier texto: no sirve de rastro.
+        en_panel = inf.testigo in registro or ("." in inf.dominio and not inf.dominio[0].isdigit()
                                                      and inf.dominio in registro)
         aprobado = inf.aprobado and not en_panel
         escrituras = str(len(inf.escrituras))
@@ -416,6 +532,9 @@ class Panel:
             if not inf.busqueda_ok else
             f"Compruébalo tú: busca «{inf.testigo}» con findstr en cualquier carpeta; no aparecerá.",
         ]
+        if inf.contenedores is not None:
+            lineas.insert(2, "Contenedores: Docker confirma registros apagados y disco de solo lectura."
+                             if inf.contenedores else "Contenedores: Docker NO confirmó que estén sin registros.")
         self.resultado.configure(text="\n".join(lineas), fg=VERDE if aprobado else ALERTA)
         self._evento_local("panel", "verificación sin registros: " + ("aprobada" if aprobado else "FALLIDA"),
                            alerta=not aprobado)
@@ -432,7 +551,13 @@ class Panel:
     def revisar_directorio(self) -> None:
         r = self.control.revisar_directorio()
         self._construir_nodos(r["relays"] or [("entrada1", False), ("medio1", False), ("salida1", True)])
-        if r["estado"] == "local":
+        if r["estado"] == "docker":
+            self.info.configure(text=f"Directorio de Docker v{r['version']} verificado: cada relay en su red.",
+                                fg=TEXTO2)
+        elif self.control.modo == "docker":
+            self.info.configure(text="Directorio de Docker ausente, vencido o no válido. Escribe la contraseña "
+                                     "y pulsa «Firmar directorio Docker».", fg=VINO_CLARO)
+        elif r["estado"] == "local":
             self.info.configure(text=f"Directorio v{r['version']} verificado: relays en 127.0.0.1.", fg=TEXTO2)
         elif r["estado"] == "remoto":
             self.info.configure(text=f"El directorio v{r['version']} es el de Docker (semana 4). Escribe la "
@@ -453,6 +578,14 @@ class Panel:
         self.log.see("end")
         self.log.configure(state="disabled")
 
+    def _bloque_en_eventos(self, texto: str) -> None:
+        """Texto en columnas dentro del cuadro de eventos, visible desde su primera línea."""
+        self.log.configure(state="normal")
+        inicio = self.log.index("end-1c")
+        self.log.insert("end", texto + "\n")
+        self.log.yview(inicio)
+        self.log.configure(state="disabled")
+
     def _sondear(self) -> None:
         try:
             while True:
@@ -464,6 +597,8 @@ class Panel:
                     al_error(excepcion)
         except queue.Empty:
             pass
+        if self._ocupado and self.control.aviso:
+            self.info.configure(text=self.control.aviso, fg=TEXTO2)
         for _, componente, codigo, cantidad in self.control.eventos_nuevos():
             texto = consola.EVENTOS.get(codigo, consola.EVENTOS["ERROR_INTERNO"])
             if cantidad is not None:
@@ -502,6 +637,9 @@ class Panel:
             c.itemconfigure(self._pildora_fondo, outline=ALERTA, fill=NEGRO)
 
     def cerrar(self) -> None:
+        if self._ocupado and self.control.modo == "docker":   # no dejar contenedores a medio crear
+            self.info.configure(text="Espera a que termine la operación de Docker para cerrar.", fg=ALERTA)
+            return
         self.info.configure(text="Cerrando la red…", fg=TEXTO2)
         self.raiz.update_idletasks()
         self.control.cerrar()
@@ -542,7 +680,8 @@ def main(argv: list[str] | None = None) -> int:
         ctypes.windll.shcore.SetProcessDpiAwareness(1)   # texto nítido en pantallas con escala
     except (AttributeError, OSError):
         pass
-    control = ControladorRed(config, claves, args.puerto)
+    # Con --carpeta las claves no son las que monta Docker: el modo Docker queda desactivado.
+    control = ControladorRed(config, claves, args.puerto, orquestador=None if args.carpeta else laboratorio_docker)
     raiz = tk.Tk()
     elegir_fuentes()
     panel = Panel(raiz, control)

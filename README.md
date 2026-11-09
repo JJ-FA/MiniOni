@@ -56,8 +56,13 @@ Desde ahí:
   registro con los mismos eventos genéricos de la consola: sin IP, dominios
   ni puertos. La contraseña no se guarda: se borra del campo al usarla.
 
+- **Local / Docker** (en la cabecera): con Docker, la misma ventana firma el
+  directorio, levanta el laboratorio con redes segmentadas, pausa relays y muestra
+  la matriz con **▦ Probar segmentación**. Requiere Docker Desktop abierto.
+
 Capturas en [docs/capturas](docs/capturas). Opciones: `--puerto 9150` para
-otro puerto del proxy y `--carpeta RUTA` para otra carpeta con `config/` y `claves/`.
+otro puerto del proxy y `--carpeta RUTA` para otra carpeta con `config/` y `claves/`
+(con esta opción el modo Docker queda desactivado).
 
 ## Levantar la red y navegar en un solo computador (semanas 2 y 3)
 
@@ -100,6 +105,23 @@ contenido. Si se detiene un relay, la navegación **falla** (no sale directo).
 La política del nodo de salida está en `config/politica_salida.json`
 (por defecto solo puertos 80 y 443 hacia IP públicas).
 
+## Laboratorio Docker con redes segmentadas (semana 4)
+
+Cada relay en su contenedor y cada salto en su propia red (ISO/IEC 27033): desde cada
+red solo se alcanza el siguiente nodo, nadie tiene Internet salvo (opcionalmente) el
+relay de salida, y Docker no guarda registros. El puerto publicado llega a una puerta
+sin claves que solo reenvía hacia el relay de entrada. Requiere Docker Desktop.
+Detalle, diagrama y resultados: [docs/SEMANA4_DOCKER.md](docs/SEMANA4_DOCKER.md).
+
+```powershell
+python laboratorio_docker.py preparar      # firma config/directorio.docker.json (IP 10.10.x)
+python laboratorio_docker.py iniciar       # imagen + 4 redes + 3 relays + web del laboratorio
+python laboratorio_docker.py probar        # segmentación, punta a punta y fallo cerrado
+python cliente_proxy.py --directorio config/directorio.docker.json --entrada-via 127.0.0.1:9001
+# Firefox con proxy 127.0.0.1:9050 -> http://web/   (muestra 10.10.9.11: el destino no ve tu equipo)
+python laboratorio_docker.py detener
+```
+
 ## Revisión de seguridad del código
 
 | Comando | Qué revisa | Norma |
@@ -108,7 +130,7 @@ La política del nodo de salida está en `config/politica_salida.json`
 | `python -m pytest tests/test_fuzzing.py --hypothesis-profile=intenso` | Fuzzing: ~100 000 entradas aleatorias a los parsers (tarda unos minutos) | NIST SSDF PW.8.2 · ASVS V2.2.1 |
 | `pip-audit -r requirements.txt` | Vulnerabilidades conocidas en las dependencias | NIST SSDF PW.4.1 |
 | `python -m bandit -q -r tests -s B101,B104,B105` | Análisis estático de las pruebas (motivos de las 3 reglas omitidas en `docs/CLASE3_CODIFICACION_SEGURA.md`) | NIST SSDF PW.7.2 |
-| `python revisar_secretos.py` | Secretos en el código (detect-secrets), claves sin cifrar, `.gitignore`, carpeta en la nube y **secretos en el historial de Git** | NIST SSDF PS.1 |
+| `python revisar_secretos.py` | Secretos en el código (detect-secrets), claves sin cifrar, `.gitignore`, carpeta en la nube, **secretos en el historial de Git** y `.dockerignore` (ninguna clave en la imagen) | NIST SSDF PS.1 |
 | `python minioni_admin.py revisar-certificados` | Días que le quedan al certificado TLS de cada relay (código 1 si alguno venció) | ASVS 5.0 V11.1.1 |
 
 ## Crear las claves y el directorio firmado
@@ -158,6 +180,9 @@ de OneDrive. Rotación de certificados y claves: [docs/ROTACION_CLAVES.md](docs/
 | [docs/CLASE3_NVD.md](docs/CLASE3_NVD.md) | CVE del NVD que tocan a MiniOni, por control (03-11-2026) |
 | [docs/CLASE3_CODIFICACION_SEGURA.md](docs/CLASE3_CODIFICACION_SEGURA.md) | Investigación de los 4 controles (Clase 3): hallazgos, SAST, secretos |
 | [docs/TRASPASO_CLASE3_CLAUDE_CODE.md](docs/TRASPASO_CLASE3_CLAUDE_CODE.md) | Traspaso para Claude Code: reglas nuevas, estado y tareas T1-T7 antes de la Clase 4 |
+| [docs/SEMANA4_DOCKER.md](docs/SEMANA4_DOCKER.md) | Semana 4: redes segmentadas en Docker, endurecimiento, pruebas y evidencia |
+| [docs/TRASPASO_SEMANA4_CLAUDE_CODE.md](docs/TRASPASO_SEMANA4_CLAUDE_CODE.md) | Traspaso de la semana 4 para Claude Code: cambios, reglas 23-32 y tareas S4-T1 a S4-T5 |
+| [docs/PLAN_ENTREGA_SEMANA5.md](docs/PLAN_ENTREGA_SEMANA5.md) | Entrega final: qué debe tener la aplicación, Wireshark, informe, demostración y paquete |
 | [docs/TRAZABILIDAD.md](docs/TRAZABILIDAD.md) | Requisito → norma → código → prueba |
 
 ## Plan
@@ -167,7 +192,7 @@ de OneDrive. Rotación de certificados y claves: [docs/ROTACION_CLAVES.md](docs/
 | 1 | Ficha, requisitos, arquitectura; núcleo criptográfico, directorio firmado, pruebas | ✅ |
 | 2 | Relays en red (asyncio + TLS 1.3), límites anti-DoS | ✅ |
 | 3 | Nodo de salida, proxy SOCKS5, fail-closed, conexión del navegador | ✅ |
-| 4 | Entorno Docker con redes segmentadas | ⏳ |
+| 4 | Entorno Docker con redes segmentadas, contenedores endurecidos, pruebas de segmentación | ✅ |
 | 5 | Pruebas con Wireshark, documentación final e informe | ⏳ |
 
 ## Normas

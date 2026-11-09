@@ -168,7 +168,9 @@ class InformeRegistros:
     archivos: list[Path] = field(default_factory=list)
     revisados: int = 0
     duracion_s: float = 0.0
+    contenedores: bool | None = None   # solo en modo Docker: Docker confirma cero registros
 
     @property
     def aprobado(self) -> bool:
-        return not self.escrituras and not self.en_consola and not self.archivos
+        return (not self.escrituras and not self.en_consola and not self.archivos
+                and self.contenedores is not False)

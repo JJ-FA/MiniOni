@@ -1,0 +1,17 @@
+# Opcional: da salida a Internet SOLO al relay de salida (python laboratorio_docker.py iniciar --con-internet).
+#
+# Sin este archivo el laboratorio es cerrado: solo se navega a la web del laboratorio.
+# Con él, salida1 se conecta además a red_internet; los demás nodos siguen aislados y
+# la política de salida sigue limitando a los puertos 80 y 443 y a IP públicas
+# (más la excepción documentada 10.10.9.0/24).
+
+services:
+  salida1:
+    networks:
+      red_internet: {}
+
+networks:
+  red_internet:
+    driver: bridge
+    ipam:
+      config: [{subnet: 10.10.8.0/24}]

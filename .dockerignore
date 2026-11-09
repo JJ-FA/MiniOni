@@ -1,0 +1,20 @@
+# Lo que NUNCA entra al contexto de construcción de la imagen (NIST SSDF PS.1.1).
+# Una clave copiada a una imagen queda en sus capas aunque luego se borre.
+claves/
+**/*.key
+config/
+.git/
+.venv/
+venv/
+**/__pycache__/
+.pytest_cache/
+.hypothesis/
+tests/
+docs/
+hooks/
+errores.txt
+pytest.txt
+*.pdf
+*.png
+*.pcap
+*.pcapng

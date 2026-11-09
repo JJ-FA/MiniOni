@@ -101,7 +101,8 @@ MiniOni/
 └── docs/                   Este documento, protocolo, límites, trazabilidad
 ```
 
-Semana siguiente: `docker-compose.yml` con redes segmentadas.
+Semana 4: `Dockerfile`, `docker-compose.yml` (4 redes segmentadas), `docker/` (web del
+laboratorio y sonda de pruebas) y `laboratorio_docker.py`. Ver [SEMANA4_DOCKER.md](SEMANA4_DOCKER.md).
 
 ## 5.1 Transporte (`transporte.py`)
 
@@ -237,3 +238,6 @@ flowchart LR
 | DNS remoto en el nodo de salida | Resolver en el proxy | Resolver en el equipo del usuario filtraría los dominios visitados al DNS local |
 | Resolver una vez y conectar a la IP verificada | Conectar por nombre | Evita DNS-rebinding: el nombre no puede cambiar a una IP interna entre la verificación y la conexión |
 | Proxy solo en 127.0.0.1 | Escuchar en la LAN | Un proxy abierto sería un relé abierto para cualquiera en la red |
+| Una red Docker por salto (semana 4) | Una sola red para todos los nodos | Cada nodo solo alcanza al siguiente: un nodo comprometido no puede saltarse la cadena ni salir a Internet (ISO/IEC 27033) |
+| Proxy en el equipo y entrada publicada en 127.0.0.1 | Proxy dentro de un contenedor | El proxy sigue escuchando solo en 127.0.0.1 y el navegador no cambia; solo cambia la dirección del primer salto (`--entrada-via`) |
+| `logging: none` en Docker | Registros de Docker por defecto (`json-file`) | Docker guardaría en disco todo lo que imprimen los relays |

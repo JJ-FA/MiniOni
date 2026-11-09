@@ -3,6 +3,7 @@
 Uso (con los 3 relays corriendo):
     python cliente_prueba.py
     python cliente_prueba.py --mensaje "otro texto"
+    python cliente_prueba.py --directorio config/directorio.docker.json --entrada-via 127.0.0.1:9001
 
 Muestra apodos (es el equipo del propio usuario), nunca IP ni puertos. Si
 algo falla, muestra solo el mensaje genérico y termina con código 1.
@@ -23,6 +24,7 @@ from minioni.celdas import ComandoRelay, MensajeRelay
 from minioni.circuito import CircuitoCliente, elegir_ruta
 from minioni.constantes import MAX_DATOS_RELAY
 from minioni.errores import MiniOniError
+from minioni.proxy import argumento_entrada_via
 
 CARPETA_CONFIG = Path("config")
 
@@ -35,9 +37,9 @@ def _progreso(i: int, relay, listo: bool) -> None:
         print("OK", flush=True)
 
 
-async def _probar(d: dirmod.Directorio, mensaje: str) -> int:
+async def _probar(d: dirmod.Directorio, mensaje: str, entrada_via=None) -> int:
     datos = mensaje.encode("utf-8")
-    circuito = CircuitoCliente()
+    circuito = CircuitoCliente(entrada_via=entrada_via)
     try:
         await circuito.construir(d, elegir_ruta(d), _progreso)
         inicio = time.perf_counter()
@@ -59,6 +61,8 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="cliente_prueba", description="Eco por un circuito de 3 saltos")
     p.add_argument("--directorio", default=str(CARPETA_CONFIG / "directorio.firmado.json"))
     p.add_argument("--mensaje", default="hola MiniOni")
+    p.add_argument("--entrada-via", type=argumento_entrada_via, default=None,
+                   help="127.0.0.1:PUERTO: llega al relay de entrada por el puerto que publica Docker")
     args = p.parse_args(argv)
     if not args.mensaje or len(args.mensaje.encode("utf-8")) > MAX_DATOS_RELAY:
         print(f"Error: el mensaje debe tener entre 1 y {MAX_DATOS_RELAY} bytes.", file=sys.stderr)
@@ -70,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print(f"Directorio verificado: versión {d.version}, {len(d.relays)} relays")
     try:
-        return asyncio.run(_probar(d, args.mensaje))
+        return asyncio.run(_probar(d, args.mensaje, args.entrada_via))
     except MiniOniError as e:
         print(f"FALLO\nError: {e.mensaje_publico}", file=sys.stderr)
         return 1

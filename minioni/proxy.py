@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import ipaddress
 import os
 import re
 import secrets
@@ -208,8 +209,9 @@ class GestorCircuitos:
 
     def __init__(self, directorio: dirmod.Directorio, timeout: float = TIMEOUT_HANDSHAKE_S,
                  vida_max: float = VIDA_MAX_CIRCUITO_S, max_intentos: int = MAX_INTENTOS_CIRCUITO,
-                 construir=None) -> None:
+                 construir=None, entrada_via: tuple[str, int] | None = None) -> None:
         self.directorio = directorio
+        self._entrada_via = entrada_via
         self._timeout = timeout
         self._vida_max = vida_max
         self._max_intentos = max_intentos
@@ -224,7 +226,7 @@ class GestorCircuitos:
         return len(self._circuitos)
 
     async def _construir_real(self) -> CircuitoCliente:
-        c = CircuitoCliente(self._timeout)
+        c = CircuitoCliente(self._timeout, entrada_via=self._entrada_via)
         await c.construir(self.directorio, elegir_ruta(self.directorio))
         return c
 
@@ -471,3 +473,46 @@ def argumento_puerto(texto: str) -> int:
         return validar_puerto(int(texto, 10))
     except (ValueError, DestinoNoPermitido):
         raise argparse.ArgumentTypeError("debe ser un número entre 1 y 65535") from None
+
+
+_ENTRADA_VIA = re.compile(r"([0-9.]{7,15}):([0-9]{1,5})")
+
+
+def argumento_entrada_via(texto: str) -> tuple[str, int]:
+    """Tipo de argparse para --entrada-via: '127.0.0.1:PUERTO' (semana 4, Docker).
+
+    Solo se acepta una IP de loopback (127.x.x.x): la opción existe para llegar al
+    relay de entrada que Docker publica en el propio equipo, no para desviar el
+    tráfico a otra máquina. Aun así, la identidad del relay la sigue garantizando
+    el pinning de la huella del directorio (ASVS 5.0 V2.2.1, V12.3.4).
+    """
+    coincidencia = _ENTRADA_VIA.fullmatch(texto)
+    error = argparse.ArgumentTypeError("debe ser 127.0.0.1:PUERTO (el puerto que publica Docker)")
+    if coincidencia is None:
+        raise error
+    try:
+        ip = ipaddress.IPv4Address(coincidencia.group(1))
+        puerto = validar_puerto(int(coincidencia.group(2), 10))
+    except (ValueError, DestinoNoPermitido):
+        raise error from None
+    if not ip.is_loopback:
+        raise error
+    return str(ip), puerto
+
+
+_NOMBRE_DIRECTORIO = re.compile(r"directorio\.([a-z0-9_-]{1,32})\.json")
+
+
+def ruta_ultima_version(carpeta_config: Path, ruta_directorio: Path) -> Path:
+    """Archivo anti-rollback que corresponde a un directorio.
+
+    Cada directorio lleva su propio contador: el local (directorio.firmado.json →
+    ultima_version) y el de Docker (directorio.docker.json → ultima_version.docker)
+    se publican por separado, y con un contador común el que tuviera la versión más
+    baja quedaría rechazado como si fuera un ataque de rollback.
+    """
+    nombre = Path(ruta_directorio).name
+    coincidencia = _NOMBRE_DIRECTORIO.fullmatch(nombre)
+    if coincidencia is None or coincidencia.group(1) == "firmado":
+        return Path(carpeta_config) / "ultima_version"
+    return Path(carpeta_config) / f"ultima_version.{coincidencia.group(1)}"

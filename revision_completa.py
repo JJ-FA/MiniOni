@@ -3,6 +3,7 @@
 Uso (con el entorno activo y después de preparar-laboratorio):
     python revision_completa.py
     python revision_completa.py --con-internet     # agrega pip-audit (necesita internet)
+    python revision_completa.py --con-docker       # agrega la prueba del laboratorio Docker (debe estar iniciado)
 """
 
 import os
@@ -53,6 +54,9 @@ def main() -> int:
     if "--con-internet" in sys.argv:
         pasos.append(("Vulnerabilidades en dependencias (pip-audit)",
                       [PY, "-m", "pip_audit", "-r", "requirements.txt"]))
+    if "--con-docker" in sys.argv:
+        pasos.append(("Laboratorio Docker: segmentación, punta a punta y fallo cerrado",
+                      [PY, "laboratorio_docker.py", "probar"]))
     if not os.path.exists(os.path.join("config", "directorio.firmado.json")):
         print("Falta el directorio firmado. Ejecuta primero:\n"
               "  python minioni_admin.py preparar-laboratorio")
