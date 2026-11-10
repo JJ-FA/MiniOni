@@ -25,7 +25,7 @@ En Linux/macOS: `python3 -m venv .venv` y `source .venv/bin/activate`.
 **La primera vez, en este orden:** crea las claves ([Crear las claves y el directorio
 firmado](#crear-las-claves-y-el-directorio-firmado), con `MINIONI_CLAVES` fuera de la
 nube), ejecuta las pruebas y después abre el panel. Si clonaste el repositorio, activa
-también el hook que revisa secretos: `git config core.hooksPath hooks`.
+también el hook de revisión de secretos con `git config core.hooksPath hooks`.
 
 ## Probar el proyecto
 
@@ -232,7 +232,7 @@ de OneDrive. Rotación de certificados y claves: [docs/ROTACION_CLAVES.md](docs/
 | 2 | Relays en red (asyncio + TLS 1.3), límites anti-DoS | ✅ |
 | 3 | Nodo de salida, proxy SOCKS5, fail-closed, conexión del navegador | ✅ |
 | 4 | Entorno Docker con redes segmentadas, contenedores endurecidos, pruebas de segmentación | ✅ |
-| 5 | Pruebas con Wireshark, documentación final e informe | ⏳ Falta lo del equipo: conclusiones, ensayo y etiqueta `v1.0` |
+| 5 | Pruebas con Wireshark, documentación final e informe | ✅ Terminada (etiqueta `v1.0`, 10-11-2026) |
 
 ## Normas
 

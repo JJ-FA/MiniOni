@@ -15,7 +15,7 @@ date: "10 de noviembre de 2026 · Equipo Onion (Juan José Figueroa Ayala, Juan 
 | 3 | Nodo de salida, proxy SOCKS5, navegador, panel gráfico, "sin registros" | Terminada |
 | Clase 3 | Codificación segura: 4 controles, 11 fallos corregidos, SAST y secretos | Terminada |
 | 4 | Laboratorio Docker con redes segmentadas, verificado en Windows el 09-11-2026 | Terminada |
-| 5 | Captura con Wireshark, demostración, paquete y borrador del informe | Falta lo del equipo (sección 6) |
+| 5 | Captura con Wireshark, demostración, paquete y borrador del informe | Terminada en el código (etiqueta `v1.0`); falta lo de la sección 6 |
 
 **Números de hoy** (medidos en Windows el 10-11-2026):
 
@@ -192,13 +192,13 @@ OneDrive. Van en la carpeta local que indica la variable `MINIONI_CLAVES`.
 
 ## 6.1 Lo que el plan reserva al equipo
 
-El código, las capturas, el STRIDE final y el borrador del informe ya están hechos.
+El código, las capturas, el STRIDE final, el borrador del informe y la etiqueta `v1.0`
+ya están hechos.
 Falta lo que debe hacer una persona (`docs/PLAN_ENTREGA_SEMANA5.md`):
 
 | Tarea | Qué falta | Importancia |
 |---|---|---|
 | S5-T2 | Que alguien del grupo instale el proyecto siguiendo solo el README, incluidas las claves y Firefox | Alta |
-| S5-T3 | Commit final, semana 5 marcada como terminada en el README y etiqueta `v1.0` con el equipo presente | Alta |
 | S5-T5 | Escribir las conclusiones, agregar los pantallazos y exportar el informe a PDF | Alta |
 | S5-T6 | Ensayar la demostración con el cronómetro | Media |
 | S5-T7 | Generar el paquete con `empaquetar_entrega.py` después de la etiqueta | Alta |

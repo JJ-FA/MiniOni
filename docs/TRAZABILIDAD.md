@@ -2,7 +2,8 @@
 
 Verificado en Windows el 10-11-2026 con `python revision_completa.py --con-docker --con-internet`
 (todo correcto) y con las capturas reales de `docs/WIRESHARK.md`. Esta verificación no incluye la
-instalación hecha por una persona del equipo (S5-T2), las pantallas de Wireshark ni la etiqueta `v1.0`.
+instalación hecha por una persona del equipo (S5-T2) ni las pantallas de Wireshark. Etiqueta `v1.0` creada
+el 10-11-2026.
 
 | Req. | Norma | Implementación | Prueba | Estado |
 |---|---|---|---|---|
@@ -56,4 +57,4 @@ instalación hecha por una persona del equipo (S5-T2), las pantallas de Wireshar
 | Tráfico entre nodos ilegible (captura real) | ASVS 5.0 V12.1.1 · ISO/IEC 27033 · R2 | `laboratorio_docker.py capturar`, `minioni/analisis_pcap.py`, `docker/Dockerfile.captura`, `docs/WIRESHARK.md` | Capturas reales en Windows (10-11-2026): entrada-medio y medio-salida sin texto en claro, registros de 534 bytes; salida-web con HTTP en claro. `test_semana5.py` (pcap de ejemplo sin Docker, fuzzing del lector, rangos) | ✅ Semana 5 |
 | Excepción de privilegios solo para capturar | ISO/IEC 27033 · CIS Docker Benchmark | Único contenedor con `NET_RAW` y `NET_ADMIN`, sin registros y de solo lectura; documentado en `docs/LIMITES.md` | `test_semana5.py::test_captura_con_privilegios_minimos_y_sin_registros`; capturas fuera de Git e imagen: `test_las_capturas_no_van_a_git_ni_a_la_imagen` | ✅ Semana 5 |
 | Demostración repetible | ASVS 5.0 V16.5.3 · ISO/IEC 27033 | `laboratorio_docker.py demo` (estado, pruebas y comandos siguientes); guion en `README.md` | `test_semana5.py::test_demo_muestra_estado_prueba_y_comandos`; ejecutado en Windows con *Todo correcto* (10-11-2026) | ✅ Semana 5 |
-| Paquete de entrega sin secretos | NIST SSDF PS.1.1 · ASVS 5.0 V13.3.1 | `empaquetar_entrega.py`: `git archive`, revisión de nombres y contenido, `revisar_secretos.py` sobre lo descomprimido; si falla borra el zip | `test_semana5.py::test_paquete_con_algo_prohibido_se_rechaza`, `test_si_la_revision_de_secretos_falla_se_borra_el_zip`, `test_evidencia_con_una_clave_rechaza_el_paquete` | ✅ Semana 5 · falta la etiqueta `v1.0` del equipo |
+| Paquete de entrega sin secretos | NIST SSDF PS.1.1 · ASVS 5.0 V13.3.1 | `empaquetar_entrega.py`: `git archive`, revisión de nombres y contenido, `revisar_secretos.py` sobre lo descomprimido; si falla borra el zip | `test_semana5.py::test_paquete_con_algo_prohibido_se_rechaza`, `test_si_la_revision_de_secretos_falla_se_borra_el_zip`, `test_evidencia_con_una_clave_rechaza_el_paquete` | ✅ Semana 5 · etiqueta `v1.0` (10-11-2026) |
