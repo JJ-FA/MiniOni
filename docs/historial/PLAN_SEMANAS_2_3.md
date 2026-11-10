@@ -4,6 +4,8 @@ subtitle: "Relays en red con TLS 1.3, cliente de circuitos, nodo de salida y pro
 date: "27 de octubre de 2026 · Equipo Onion"
 ---
 
+> **Documento de trabajo ya cerrado.** Se conserva como historial del proyecto y puede no reflejar el estado actual. Lo vigente está en `README.md` y `docs/TRAZABILIDAD.md`.
+
 # 0. Cómo usar este documento
 
 Este documento es la especificación para programar las semanas 2 y 3 de MiniOni.

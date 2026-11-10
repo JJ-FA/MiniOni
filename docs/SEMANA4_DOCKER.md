@@ -146,7 +146,7 @@ Solo el relay de salida se conecta a una red con Internet; los demás siguen ais
 
 ### 4.3 Actualizar la imagen base (SSDF PW.4.1)
 
-La imagen está fijada por su *digest* en `Dockerfile` (`ARG BASE`) y en
+La imagen está fijada por su *digest* en `Dockerfile` (`ARG BASE`), en `docker/Dockerfile.captura` (semana 5) y en
 `docker-compose.yml` (valor por defecto de `MINIONI_IMAGEN_BASE`). El digest vigente
 se obtuvo del registro de Docker Hub el 08-11-2026 y corresponde a la lista multiarquitectura.
 Para pasar a una versión nueva, por ejemplo cuando salga un parche de seguridad:
@@ -170,6 +170,9 @@ con la red detenida.
   laboratorio y arranca el proxy con la entrada `127.0.0.1:9001`. La casilla *Internet
   solo para el relay de salida* equivale a `--con-internet`.
 - **Apagar / Encender** en cada relay usa `docker pause` y `docker unpause`.
+- Mientras arranca, solo se muestra «Fase N de 4 en proceso»: comprobar la configuración,
+  preparar el entorno, conectar los nodos y abrir el acceso. Ni la terminal ni el panel
+  muestran comandos o salida de Docker (ASVS 5.0 V16.5.1).
 - **Probar segmentación** muestra la matriz en el cuadro de eventos.
 - **Verificar sin registros** busca el testigo en `http://web/` (o en el buscador real
   si el laboratorio tiene Internet) y además comprueba que Docker reporte registros

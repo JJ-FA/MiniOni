@@ -193,7 +193,7 @@ class OrquestadorFalso:
             raise ClaveInvalida("x")
         if self.error is not None:
             raise self.error
-        avisar("[2/4] Construyendo la imagen")
+        avisar(consola.texto_fase(2))
 
     def preparar(self, contrasena):
         self.contrasenas.append(contrasena)
@@ -257,6 +257,34 @@ def test_docker_ciclo_completo_con_orquestador_simulado(tmp_path, laboratorio):
         assert not control.instantanea["en_marcha"] and orq.llamadas[-1] == ("detener",)
         with pytest.raises(PruebaFallida):
             correr(control, control.probar_segmentacion())
+    finally:
+        control.cerrar()
+
+
+def _fases(textos):
+    return [t.split(":")[0] for t in textos]
+
+
+def test_el_arranque_local_se_muestra_por_fases(tmp_path, laboratorio):
+    control = preparar(tmp_path, laboratorio)
+    vistos = []
+    control._avisar = vistos.append
+    try:
+        correr(control, control.iniciar(PASS))
+        assert _fases(vistos) == [f"Fase {n} de 4 en proceso" for n in range(1, 5)]
+        assert control.aviso == ""
+    finally:
+        control.cerrar()
+
+
+def test_el_arranque_docker_termina_en_la_fase_4_y_limpia_el_aviso(tmp_path, laboratorio):
+    control, _ = preparar_docker(tmp_path, laboratorio)
+    vistos = []
+    control._avisar = vistos.append
+    try:
+        correr(control, control.iniciar(PASS))
+        assert _fases(vistos) == ["Fase 2 de 4 en proceso", "Fase 4 de 4 en proceso"]
+        assert control.aviso == ""
     finally:
         control.cerrar()
 
@@ -425,7 +453,7 @@ def test_ventana_en_modo_docker(tmp_path, laboratorio):
     p.clave.insert(0, PASS)
     p.internet.set(True)
     p.iniciar_o_detener()
-    assert p.clave.get() == ""
+    assert p.clave.get() == "" and p.info["text"].startswith("Fase 1 de 4 en proceso")
     _esperar(raiz, lambda: control.instantanea["en_marcha"] and not p._ocupado)
     assert orq.llamadas == [("iniciar", True)] and orq.contrasenas == [PASS]
     assert p.radios["local"]["state"] == "disabled" and p.c_internet["state"] == "disabled"

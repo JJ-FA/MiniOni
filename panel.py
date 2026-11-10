@@ -393,11 +393,11 @@ class Panel:
             self.info.configure(text="Escribe la contraseña de las claves.", fg=ALERTA)
             return
         if self.control.modo == "docker":
-            self._ocupar(True, "Levantando el laboratorio Docker (la primera vez tarda varios minutos)…")
+            self._ocupar(True, consola.texto_fase(1))
             self._accion(self.control.iniciar(contrasena, internet=self.internet.get()),
                          self._iniciada, self._error_arranque)
             return
-        self._ocupar(True, "Descifrando claves y levantando los relays y el proxy…")
+        self._ocupar(True, consola.texto_fase(1))
         self._accion(self.control.iniciar(contrasena), self._iniciada, self._error_arranque)
 
     def _iniciada(self, n: int) -> None:

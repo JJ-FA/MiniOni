@@ -4,6 +4,8 @@ subtitle: "Qué se hizo en Codificación segura, qué reglas nuevas rigen el có
 date: "3 de noviembre de 2026 · Equipo Onion"
 ---
 
+> **Documento de trabajo ya cerrado.** Se conserva como historial del proyecto y puede no reflejar el estado actual. Lo vigente está en `README.md` y `docs/TRAZABILIDAD.md`.
+
 # 0. Cómo usar este documento
 
 Este documento reúne todo lo trabajado en el OVA de la **Clase 3 (Codificación

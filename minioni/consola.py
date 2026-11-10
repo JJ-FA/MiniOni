@@ -41,6 +41,18 @@ _COMPONENTE = re.compile(r"^[a-z0-9-]{1,24}$")
 _oyentes: list = []
 
 
+# Progreso del arranque: textos fijos que no revelan comandos, rutas ni nombres internos
+# (ASVS 5.0 V16.5.1). Los comparten la terminal y el panel.
+FASES_ARRANQUE = ("comprobando la configuración", "preparando el entorno",
+                  "conectando los nodos", "abriendo el acceso")
+
+
+def texto_fase(numero: int, nota: str = "") -> str:
+    """«Fase 2 de 4 en proceso: preparando el entorno...». `nota` es siempre un texto fijo."""
+    extra = f" ({nota})" if nota else ""
+    return f"Fase {numero} de {len(FASES_ARRANQUE)} en proceso: {FASES_ARRANQUE[numero - 1]}{extra}..."
+
+
 def suscribir(funcion):
     """Registra `funcion(componente, codigo, cantidad)`. Devuelve una función para darse de baja."""
     _oyentes.append(funcion)

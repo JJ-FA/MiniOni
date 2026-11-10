@@ -7,6 +7,8 @@ Uso (PowerShell, con el entorno activo, Docker Desktop abierto y desde la carpet
     python laboratorio_docker.py probar       # segmentación + eco + página por el proxy
     python laboratorio_docker.py estado       # contenedores y su endurecimiento
     python laboratorio_docker.py eventos entrada1   # eventos en vivo de un relay (Ctrl+C para salir)
+    python laboratorio_docker.py capturar --tramo entrada-medio --segundos 20   # .pcap para Wireshark
+    python laboratorio_docker.py demo         # estado, pruebas y comandos para la presentación
     python laboratorio_docker.py detener      # apaga todo y borra las redes
 
 Después de `iniciar`, el navegador usa el proxy de siempre, apuntando a la entrada que
@@ -28,6 +30,7 @@ import getpass
 import json
 import os
 import queue
+import re
 import shutil
 import subprocess  # nosec B404 - solo se ejecuta el cliente de Docker con listas fijas, sin shell
 import sys
@@ -36,7 +39,7 @@ import time
 from pathlib import Path
 
 from minioni import almacen_claves as ak
-from minioni import consola
+from minioni import analisis_pcap, consola
 from minioni import directorio as dirmod
 from minioni.errores import ClaveInvalida, MiniOniError
 
@@ -65,6 +68,17 @@ ENDURECIDO = ["--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-priv
               "--memory", "256m",
               # /tmp en memoria y privado (ver docker-compose.yml); no es un directorio del equipo.
               "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=1m,uid=10001,gid=10001,mode=0700"]  # nosec B108
+
+
+# Captura de tráfico (semana 5): cada tramo se escucha en el contenedor que recibe la
+# conexión y se filtra por el puerto en el que ese contenedor escucha.
+TRAMOS = {"entrada-medio": ("medio1", 9002), "medio-salida": ("salida1", 9003), "salida-web": ("web", 80)}
+IMAGEN_CAPTURA = "minioni:captura"
+CONTENEDOR_CAPTURA = "minioni-captura"
+CARPETA_CAPTURAS = RAIZ / "capturas_wireshark"
+SEGUNDOS_MINIMOS = 5
+SEGUNDOS_MAXIMOS = 120
+ESPERA_INICIO_CAPTURA_S = 2
 
 
 class ErrorLaboratorio(Exception):
@@ -215,26 +229,25 @@ def entregar_contrasena(contenedor: str, contrasena: str, espera: float = ESPERA
         proceso.wait(timeout=10)
 
 
-def _levantar(contrasena: str, internet: bool, avisar, capturar: bool) -> None:
+def _levantar(contrasena: str, internet: bool, avisar) -> None:
     """Construye la imagen, crea redes y contenedores y entrega la contraseña a cada relay.
 
-    `avisar` recibe solo textos fijos de progreso. Si un relay no arranca se apaga todo
-    (fallo cerrado): nunca queda un laboratorio a medias.
+    `avisar` recibe solo las fases genéricas: la salida de Docker no se muestra. Si un
+    relay no arranca se apaga todo (fallo cerrado): nunca queda un laboratorio a medias.
     """
-    avisar("[2/4] Construyendo la imagen (la primera vez descarga python:3.14-slim) ...")
-    if _compose("build", capturar=capturar).returncode != 0:
+    avisar(consola.texto_fase(2, "la primera vez puede tardar varios minutos"))
+    if _compose("build").returncode != 0:
         raise ErrorLaboratorio("no se pudo construir la imagen (revisa la conexión a Internet de Docker).")
     _compose("down", "--remove-orphans", timeout=120, internet=True)
     if _compose("up", "-d", internet=internet).returncode != 0:
         raise ErrorLaboratorio("no se pudieron crear las redes o los contenedores. Si dice que la subred ya "
                                "existe, ejecuta: python laboratorio_docker.py detener")
-    avisar("[3/4] Redes y contenedores creados; entregando la contraseña a los relays")
+    avisar(consola.texto_fase(3))
     for apodo in RELAYS:
         try:
             arranco = entregar_contrasena(CONTENEDORES[apodo], contrasena)
         except (OSError, subprocess.SubprocessError):
             arranco = False
-        avisar(f"      {apodo:<9} ... {'OK' if arranco else 'FALLO'}")
         if not arranco:
             _compose("down", timeout=120, internet=True)
             raise ErrorLaboratorio(f"{apodo} no arrancó (¿las claves coinciden con el directorio? "
@@ -248,29 +261,30 @@ def iniciar_con_contrasena(contrasena: str, internet: bool = False, avisar=_sin_
     descifrando una clave ANTES de crear nada: si es incorrecta, sale ClaveInvalida
     y no se arranca ningún contenedor.
     """
+    avisar(consola.texto_fase(1))
     _comprobar_docker()
     claves = ak.carpeta_claves()
     _claves_relays(claves)
-    d = _verificar_directorio_docker()
-    avisar(f"[1/4] Directorio de Docker verificado (versión {d.version})")
+    _verificar_directorio_docker()
     ak.cargar_privada(claves / "entrada1" / "cebolla.key", contrasena, "x25519")
-    _levantar(contrasena, internet, avisar, capturar=True)
+    _levantar(contrasena, internet, avisar)
 
 
 def iniciar(internet: bool = False) -> None:
+    _imprimir(consola.texto_fase(1))
     _comprobar_docker()
     claves = ak.carpeta_claves()
     _claves_relays(claves)
-    d = _verificar_directorio_docker()
-    print(f"[1/4] Directorio de Docker verificado (versión {d.version})")
+    _verificar_directorio_docker()
     contrasena = _pedir_y_comprobar_contrasena(claves)
     try:
-        _levantar(contrasena, internet, _imprimir, capturar=False)
+        _levantar(contrasena, internet, _imprimir)
     finally:
         del contrasena
+    _imprimir(consola.texto_fase(4))
     modo = ("con Internet solo para el relay de salida" if internet
             else "cerrado: solo la web del laboratorio, sin Internet")
-    print(f"[4/4] Laboratorio en marcha ({modo}).\n\n"
+    print(f"MiniOni en marcha ({modo}).\n\n"
           "Siguiente paso, en otra ventana de PowerShell:\n"
           "  python cliente_proxy.py --directorio config/directorio.docker.json --entrada-via 127.0.0.1:9001\n"
           "y en Firefox (proxy 127.0.0.1:9050) abre: http://web/\n"
@@ -436,6 +450,99 @@ def reanudar(apodo: str) -> None:
     _pausa("unpause", apodo)
 
 
+def _argumento_segundos(texto: str) -> int:
+    if not re.fullmatch(r"[0-9]{1,3}", texto, re.ASCII) or not SEGUNDOS_MINIMOS <= int(texto) <= SEGUNDOS_MAXIMOS:
+        raise argparse.ArgumentTypeError(f"usa un entero entre {SEGUNDOS_MINIMOS} y {SEGUNDOS_MAXIMOS}")
+    return int(texto)
+
+
+def _lanzar_captura(tramo: str, segundos: int) -> None:
+    """tcpdump en la red del contenedor que recibe el tramo. Es el único con NET_RAW y NET_ADMIN."""
+    nodo, puerto = TRAMOS[tramo]
+    r = _ejecutar(["run", "--rm", "--detach", "--name", CONTENEDOR_CAPTURA,
+                   "--network", f"container:{CONTENEDORES[nodo]}",
+                   "--cap-drop", "ALL", "--cap-add", "NET_RAW", "--cap-add", "NET_ADMIN",
+                   "--read-only", "--security-opt", "no-new-privileges:true", "--log-driver", "none",
+                   "--pids-limit", "32", "--memory", "128m",
+                   "--mount", f"type=bind,source={CARPETA_CAPTURAS.resolve()},target=/captura",
+                   IMAGEN_CAPTURA, "timeout", str(segundos),
+                   "tcpdump", "-i", "any", "-U", "-n", "-Z", "root", "-w", f"/captura/{tramo}.pcap",
+                   "tcp", "port", str(puerto)], timeout=60)
+    if r.returncode != 0:
+        raise ErrorLaboratorio("no se pudo iniciar la captura. Primero inicia el laboratorio: "
+                               "python laboratorio_docker.py iniciar")
+
+
+def _generar_trafico_de_prueba() -> None:
+    """Solo tráfico propio del laboratorio: eco y una página de la web de prueba."""
+    _sonda("red_cliente", "punta-a-punta", {
+        "/app/config/autoridad.pub": CONFIG / "autoridad.pub",
+        f"/app/config/{DIRECTORIO_DOCKER}": CONFIG / DIRECTORIO_DOCKER,
+    })
+    _eco_desde_el_equipo()
+
+
+def _imprimir_resumen(tramo: str, resumen: analisis_pcap.ResumenCaptura, correcta: bool) -> None:
+    nodo_puerto = TRAMOS[tramo][1]
+    tamanos = ", ".join(f"{t} bytes ({n} veces)" for t, n in resumen.tamanos.most_common(3)) or "ninguno"
+    print(f"\nCaptura guardada: capturas_wireshark/{tramo}.pcap")
+    print(f"  Paquetes: {resumen.paquetes}  ·  puerto del tramo: {nodo_puerto}  ·  registros TLS: {resumen.registros_tls}")
+    print(f"  Tamaños más repetidos: {tamanos}")
+    print(f"  Texto en claro «GET /» o «Host: web»: {'aparece' if resumen.texto_en_claro else 'no aparece'}")
+    esperado = "debe verse HTTP en claro" if tramo == "salida-web" else "solo debe verse tráfico cifrado"
+    print(f"  Resultado: {'OK' if correcta else 'FALLO'} ({esperado})")
+
+
+def capturar(tramo: str, segundos: int) -> bool:
+    """Evidencia para Wireshark: solo a pedido y solo con tráfico de prueba propio."""
+    if tramo not in TRAMOS or not SEGUNDOS_MINIMOS <= segundos <= SEGUNDOS_MAXIMOS:
+        raise ErrorLaboratorio("tramo o duración de la captura no válidos.")
+    _comprobar_docker()
+    _verificar_directorio_docker()
+    CARPETA_CAPTURAS.mkdir(exist_ok=True)
+    print("Preparando la herramienta de captura ...", flush=True)
+    if _ejecutar(["build", "-q", "-f", str(RAIZ / "docker" / "Dockerfile.captura"), "-t", IMAGEN_CAPTURA,
+                  str(RAIZ / "docker")]).returncode != 0:
+        raise ErrorLaboratorio("no se pudo construir la herramienta de captura (revisa la conexión de Docker).")
+    _ejecutar(["rm", "-f", CONTENEDOR_CAPTURA], timeout=30)
+    (CARPETA_CAPTURAS / f"{tramo}.pcap").unlink(missing_ok=True)
+    _lanzar_captura(tramo, segundos)
+    try:
+        print(f"Capturando {tramo} durante {segundos} segundos con tráfico de prueba ...", flush=True)
+        time.sleep(ESPERA_INICIO_CAPTURA_S)
+        _generar_trafico_de_prueba()
+        _ejecutar(["wait", CONTENEDOR_CAPTURA], timeout=segundos + 30)
+    finally:
+        _ejecutar(["rm", "-f", CONTENEDOR_CAPTURA], timeout=30)
+    try:
+        resumen = analisis_pcap.resumir_archivo(CARPETA_CAPTURAS / f"{tramo}.pcap")
+    except MiniOniError:
+        raise ErrorLaboratorio("la captura no generó un archivo válido.") from None
+    debe_verse = tramo == "salida-web"
+    correcta = resumen.paquetes > 0 and resumen.texto_en_claro == debe_verse
+    _imprimir_resumen(tramo, resumen, correcta)
+    return correcta
+
+
+SIGUIENTES_PASOS_DEMO = """
+Siguientes pasos de la demostración:
+  Navegación:   python panel.py   (Docker, Iniciar red; Firefox con proxy 127.0.0.1:9050 -> http://web/)
+  Wireshark:    abrir capturas_wireshark/entrada-medio.pcap y salida-web.pcap
+  Fallo cerrado: docker pause minioni-medio1   y luego   docker unpause minioni-medio1
+  Directorio:   python minioni_admin.py simular-ataque
+  Sin registros: docker logs minioni-salida1   y en el panel «Verificar sin registros»
+"""
+
+
+def demo() -> bool:
+    """Para presentar: estado, pruebas y los comandos siguientes, sin tener que recordarlos."""
+    estado()
+    print()
+    correcto = probar()
+    print(SIGUIENTES_PASOS_DEMO)
+    return correcto
+
+
 def eventos(apodo: str) -> None:
     if apodo not in CONTENEDORES:
         raise ErrorLaboratorio("apodo desconocido: usa entrada1, medio1, salida1, web o puerta.")
@@ -466,6 +573,11 @@ def main(argv: list[str] | None = None) -> int:
     ev = sub.add_parser("eventos", help="eventos en vivo de un contenedor")
     ev.add_argument("apodo")
     sub.add_parser("detener", help="apaga y elimina contenedores y redes")
+    cap = sub.add_parser("capturar", help="captura un tramo con tráfico de prueba, para Wireshark")
+    cap.add_argument("--tramo", required=True, choices=sorted(TRAMOS))
+    cap.add_argument("--segundos", type=_argumento_segundos, default=20,
+                     help=f"duración, de {SEGUNDOS_MINIMOS} a {SEGUNDOS_MAXIMOS} segundos")
+    sub.add_parser("demo", help="estado, pruebas y comandos para la presentación")
     args = p.parse_args(argv)
     os.chdir(RAIZ)   # claves/ y config/ se resuelven siempre desde la carpeta del proyecto
     try:
@@ -484,6 +596,10 @@ def main(argv: list[str] | None = None) -> int:
             eventos(args.apodo)
         elif args.cmd == "detener":
             detener()
+        elif args.cmd == "capturar":
+            return 0 if capturar(args.tramo, args.segundos) else 1
+        elif args.cmd == "demo":
+            return 0 if demo() else 1
     except ErrorLaboratorio as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

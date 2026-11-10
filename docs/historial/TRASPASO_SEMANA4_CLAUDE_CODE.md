@@ -4,6 +4,8 @@ subtitle: "Laboratorio Docker con redes segmentadas: qué se cambió, qué regla
 date: "8 de noviembre de 2026 · Equipo Onion"
 ---
 
+> **Documento de trabajo ya cerrado.** Se conserva como historial del proyecto y puede no reflejar el estado actual. Lo vigente está en `README.md` y `docs/TRAZABILIDAD.md`.
+
 # 0. Cómo usar este documento
 
 Este documento explica todo lo que se hizo en la **semana 4** de MiniOni (laboratorio
@@ -17,7 +19,7 @@ una tiene criterios de aceptación.
 
 Documentos relacionados, que se leen en este orden:
 
-1. `docs/TRASPASO_CLASE3_CLAUDE_CODE.md`: reglas 1 a 22 (siguen vigentes).
+1. `docs/historial/TRASPASO_CLASE3_CLAUDE_CODE.md`: reglas 1 a 22 (siguen vigentes).
 2. `docs/SEMANA4_DOCKER.md`: diseño, diagrama, resultados y evidencia de la semana 4.
 3. `docs/PLAN_ENTREGA_SEMANA5.md`: lo que la aplicación debe tener el día de la entrega.
 
@@ -116,7 +118,7 @@ probar` dio *Todo correcto*:
 
 # 3. Reglas nuevas de la semana 4
 
-Se suman a las reglas 1 a 22 de `docs/TRASPASO_CLASE3_CLAUDE_CODE.md`.
+Se suman a las reglas 1 a 22 de `docs/historial/TRASPASO_CLASE3_CLAUDE_CODE.md`.
 
 | # | Regla | Vigilada por |
 |---|---|---|

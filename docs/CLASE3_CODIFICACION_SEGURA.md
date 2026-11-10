@@ -134,7 +134,7 @@ Queda mitigada, pero no resuelta, la exposición de las claves cifradas en OneDr
 
 **¿Qué corregirán antes de la Clase 4?**
 1. Mover la carpeta `claves/` fuera de OneDrive y regenerar las claves, porque ya pasaron
-   por la nube (detalle en `docs/TRASPASO_CLASE3_CLAUDE_CODE.md`, tarea T1).
+   por la nube (detalle en `docs/historial/TRASPASO_CLASE3_CLAUDE_CODE.md`, tarea T1).
 2. Crear el repositorio Git y activar el hook de secretos (`git config core.hooksPath
    hooks`), para que `revisar_secretos.py` se ejecute antes de cada commit.
 3. Ejecutar `pip-audit` con internet para revisar vulnerabilidades conocidas en las

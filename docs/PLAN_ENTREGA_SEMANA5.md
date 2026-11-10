@@ -17,7 +17,7 @@ MiniOni ese día**:
 
 Sirve como lista de verificación para el equipo y como especificación para Claude Code
 (tareas S5-T1 a S5-T8). Las reglas 1 a 32 de los traspasos anteriores siguen vigentes
-(`docs/TRASPASO_CLASE3_CLAUDE_CODE.md` y `docs/TRASPASO_SEMANA4_CLAUDE_CODE.md`).
+(`docs/historial/TRASPASO_CLASE3_CLAUDE_CODE.md` y `docs/historial/TRASPASO_SEMANA4_CLAUDE_CODE.md`).
 
 **En una frase:** el día de la entrega, una persona que no conoce el proyecto debe
 poder ver en 15 minutos que Firefox navega por un circuito de 3 relays en redes
@@ -45,18 +45,18 @@ reemplazo de Tor ni está pensado para Internet pública (`docs/LIMITES.md`).
 
 ## 2.1 Funcionalidad obligatoria
 
-| # | Función | Cómo se demuestra | Estado al 08-11-2026 |
+| # | Función | Cómo se demuestra | Estado al 10-11-2026 |
 |---|---|---|---|
 | F1 | Circuito de 3 saltos con cifrado por capas | `python demo_capas.py`; `python cliente_prueba.py` (eco) | ✅ |
-| F2 | Navegación con Firefox por el proxy SOCKS5 `127.0.0.1:9050` | Firefox → página por MiniOni (`docs/NAVEGADOR.md`) | ✅ local · ⏳ Docker en Windows |
+| F2 | Navegación con Firefox por el proxy SOCKS5 `127.0.0.1:9050` | Firefox → página por MiniOni (`docs/NAVEGADOR.md`) | ✅ local y Docker (Windows, 09-11-2026) |
 | F3 | Directorio firmado y rechazo de un directorio alterado | `python minioni_admin.py simular-ataque` | ✅ |
 | F4 | Fallo cerrado: sin circuito no hay navegación | Apagar o pausar un relay → Firefox falla, nunca sale directo | ✅ |
 | F5 | Política de salida (solo 80 y 443 hacia IP públicas) | Puerto 22 o IP interna bloqueados (`probar`) | ✅ |
 | F6 | Sin registros, demostrable | Botón "Verificar sin registros" del panel; `docker logs` vacío | ✅ |
-| F7 | Laboratorio Docker con redes segmentadas | `python laboratorio_docker.py probar` → matriz y *Todo correcto* | ✅ Linux · ⏳ Windows (S4-T1) |
+| F7 | Laboratorio Docker con redes segmentadas | `python laboratorio_docker.py probar` → matriz y *Todo correcto* | ✅ Linux y Windows (09-11-2026) |
 | F8 | El destino no ve al usuario | `http://web/` muestra 10.10.9.11 | ✅ |
-| F9 | Tráfico entre nodos ilegible en Wireshark | Captura entrada → medio: solo TLS 1.3, sin dominios ni contenido | ⏳ **S5-T1** |
-| F10 | Panel gráfico para la demostración | `python panel.py` | ✅ local · opcional Docker (S4-T4) |
+| F9 | Tráfico entre nodos ilegible en Wireshark | Captura entrada → medio: solo TLS 1.3, sin dominios ni contenido | ✅ capturas reales (10-11-2026, `docs/WIRESHARK.md`) |
+| F10 | Panel gráfico para la demostración | `python panel.py` | ✅ local y Docker |
 
 ## 2.2 Requisitos de seguridad del proyecto (Clase 1) y su evidencia final
 
@@ -134,7 +134,8 @@ en `LIMITES.md` como excepción y en la trazabilidad.
 - `capturas_wireshark/` está en `.gitignore` y en `.dockerignore`.
 
 **Criterio:** en los tramos entrada → medio y medio → salida, el resumen dice que no
-aparecen `web` ni `GET`; en salida → web sí aparecen.
+aparecen `web` ni `GET`; en salida → web sí aparecen. El resumen busca `GET /` y
+`Host: web`, porque una cadena de 3 bytes puede salir por azar en texto cifrado.
 
 **Normas:** ASVS 5.0 V12.1.1 (TLS 1.3), ISO/IEC 27033, R2.
 
@@ -290,7 +291,7 @@ script de S5-T7 lo verifica.
 
 **Una semana antes**
 
-- [ ] Semana 4 cerrada (criterios de `TRASPASO_SEMANA4_CLAUDE_CODE.md`).
+- [ ] Semana 4 cerrada (criterios de `historial/TRASPASO_SEMANA4_CLAUDE_CODE.md`).
 - [ ] S5-T1 a S5-T4 hechas.
 - [ ] Borrador del informe completo; el equipo escribe las conclusiones.
 
@@ -298,7 +299,8 @@ script de S5-T7 lo verifica.
 
 - [ ] Prueba desde cero (S5-T2) superada.
 - [ ] Ensayo completo de la demostración, cronometrado.
-- [ ] `git tag v1.0` y paquete generado (S5-T7); revisión cruzada (S5-T8).
+- [ ] Semana 5 en ✅ en la tabla del `README.md`, commit final y `git tag v1.0`.
+- [ ] Paquete generado (S5-T7); revisión cruzada (S5-T8).
 
 **El día anterior**
 
@@ -317,6 +319,6 @@ script de S5-T7 lo verifica.
 
 | Norma | Dónde se cumple en MiniOni |
 |---|---|
-| **ISO/IEC 27033** (seguridad de redes) | Segmentación en 4 redes, un servicio alcanzable por red, TLS 1.3 entre nodos, solo la entrada publicada en loopback |
+| **ISO/IEC 27033** (seguridad de redes) | Segmentación en 4 redes, un servicio alcanzable por red, TLS 1.3 entre nodos, solo la puerta de la entrada publicada en loopback |
 | **NIST SP 800-218 SSDF** | PW.1.1 (STRIDE), PW.4.1 (versiones fijas, imagen por digest, `pip-audit`), PW.7.2 (Bandit en código y pruebas), PW.8.2 (pruebas y fuzzing), PS.1.1 (secretos fuera del código, del historial y de la imagen) |
 | **OWASP ASVS 5.0** | V2 (validación), V11 (criptografía), V12 (comunicaciones seguras), V13.3 (secretos), V16 (errores y registros), con la equivalencia a ASVS 4.0 que usan los OVA (V5, V6, V9, V7) |

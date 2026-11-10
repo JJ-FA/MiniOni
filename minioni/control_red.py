@@ -95,7 +95,7 @@ class ControladorRed:
         self._orq = orquestador
         self.modo = "local"
         self.con_internet = False
-        self.aviso = ""                    # progreso del arranque en Docker (solo textos fijos)
+        self.aviso = ""                    # fase del arranque (solo textos fijos de consola.texto_fase)
         self._entrada_via: tuple[str, int] | None = None   # solo con el laboratorio Docker en marcha
         self._salidas: dict[str, bool] = {}
         self.directorio: dirmod.Directorio | None = None
@@ -247,11 +247,9 @@ class ControladorRed:
         """Levanta el laboratorio con el orquestador y, en este equipo, solo el proxy."""
         ruta = self.config / DIRECTORIO_DOCKER
         d = cargar_directorio(ruta, self.config / "autoridad.pub", ruta_ultima_version(self.config, ruta))
-        try:
-            await asyncio.to_thread(self._llamar, self._orq.iniciar_con_contrasena, contrasena,
-                                    internet=internet, avisar=self._avisar)
-        finally:
-            self.aviso = ""
+        await asyncio.to_thread(self._llamar, self._orq.iniciar_con_contrasena, contrasena,
+                                internet=internet, avisar=self._avisar)
+        self._avisar(consola.texto_fase(4))
         try:
             proxy = ServidorProxy(d, puerto=self._puerto_proxy, gestor=GestorCircuitos(d, entrada_via=ENTRADA_DOCKER))
             await proxy.iniciar()
@@ -274,19 +272,28 @@ class ControladorRed:
         """
         if self.proxy is not None:
             return len(self._activos)
-        if self.modo == "docker":
-            return await self._iniciar_docker(contrasena, internet)
+        try:
+            if self.modo == "docker":
+                return await self._iniciar_docker(contrasena, internet)
+            return await self._iniciar_local(contrasena)
+        finally:
+            self.aviso = ""
+
+    async def _iniciar_local(self, contrasena: str) -> int:
+        self._avisar(consola.texto_fase(1))
         d = cargar_directorio(self.config / "directorio.firmado.json", self.config / "autoridad.pub",
                               self.config / "ultima_version")
         if not es_local(d):
             raise ConfiguracionInvalida("el directorio no es local")
         politica = cargar_politica(self.config / "politica_salida.json")
+        self._avisar(consola.texto_fase(2))
         nodos = {}
         for relay in d.relays:
             verificar_identidad(relay.apodo, d, self.claves)
             # scrypt es lento: en otro hilo, para que el bucle siga respondiendo.
             nodos[relay.apodo] = await asyncio.to_thread(
                 cargar_relay, relay.apodo, d, self.claves, contrasena, self._config_relay, politica)
+        self._avisar(consola.texto_fase(3))
         iniciados = []
         try:
             for apodo, nodo in nodos.items():
@@ -295,6 +302,7 @@ class ControladorRed:
                 self._activos[apodo] = True
             self.nodos = nodos
             self.directorio = d
+            self._avisar(consola.texto_fase(4))
             proxy = ServidorProxy(d, puerto=self._puerto_proxy)
             await proxy.iniciar()
             self.proxy = proxy

@@ -1,5 +1,5 @@
 =====================================================================
-  MiniOni - Comandos de las semanas 1 a 3 y qué hace cada uno
+  MiniOni - Comandos de las semanas 1 a 5 y qué hace cada uno
   Equipo Onion · Seguridad en Redes
 =====================================================================
 
@@ -114,8 +114,8 @@ daña o queda vacío, vuelve a crearlo con:
 ---------------------------------------------------------------------
 
 python -m pytest -v
-    Ejecuta las pruebas automáticas. Debe terminar en
-    "344 passed, 1 skipped" (tarda unos 4 minutos). Cada nombre dice qué comprueba; por
+    Ejecuta las pruebas automáticas. Debe terminar sin fallos (tarda
+    varios minutos). Cada nombre dice qué comprueba; por
     ejemplo test_relay_falso_no_puede_completar_handshake.
     Incluye 24 pruebas de fuzzing que lanzan datos basura aleatorios
     contra todo lo que recibe información de afuera (también contra la
@@ -339,6 +339,11 @@ docs\ROTACION_CLAVES.md           Cuándo y cómo rotar certificados
                                   y claves.
 docs\SEMANA4_DOCKER.md            Laboratorio Docker: redes segmentadas,
                                   endurecimiento, pruebas y evidencia.
+docs\WIRESHARK.md                 Semana 5: cómo capturar cada tramo y qué
+                                  se debe ver.
+docs\STRIDE.md                    Modelo de amenazas final: control, archivo
+                                  y prueba de cada amenaza.
+docs\historial                    Planes y traspasos ya cerrados.
 docs\capturas                    Capturas del panel gráfico.
 
 ---------------------------------------------------------------------
@@ -430,8 +435,9 @@ python laboratorio_docker.py preparar
 python laboratorio_docker.py iniciar
     Construye la imagen (la primera vez descarga python:3.14-slim),
     crea las 4 redes y los contenedores, pide la contraseña UNA vez, la
-    comprueba y se la entrega a cada relay. Debe terminar con
-    "Laboratorio en marcha". Con --con-internet, el relay de salida
+    comprueba y se la entrega a cada relay. Mientras espera solo muestra
+    "Fase N de 4 en proceso" y debe terminar con "MiniOni en marcha".
+    Con --con-internet, el relay de salida
     (y solo él) se conecta además a Internet.
 
 python laboratorio_docker.py probar
@@ -476,3 +482,31 @@ docker inspect --format "{{index .RepoDigests 0}}" python:3.14-slim
 
 python laboratorio_docker.py detener
     Apaga y borra contenedores y redes.
+
+
+---------------------------------------------------------------------
+SEMANA 5: CAPTURA DE TRÁFICO, DEMOSTRACIÓN Y PAQUETE
+(ver docs\WIRESHARK.md y la sección "Demostración en 15 minutos" del README)
+---------------------------------------------------------------------
+
+python laboratorio_docker.py capturar --tramo entrada-medio --segundos 20
+python laboratorio_docker.py capturar --tramo medio-salida --segundos 20
+python laboratorio_docker.py capturar --tramo salida-web --segundos 20
+    Captura un tramo con tráfico de prueba propio (de 5 a 120 segundos)
+    y guarda capturas_wireshark\<tramo>.pcap. Imprime paquetes, registros
+    TLS, tamaños y si aparece texto en claro. En los dos primeros tramos
+    no debe aparecer; en salida-web sí. No captures mientras navegas por
+    sitios reales. Las capturas no van a Git y se borran tras entregar.
+
+python laboratorio_docker.py demo
+    Para presentar: muestra el estado de los contenedores, ejecuta las
+    pruebas de segmentación y fallo cerrado, e imprime los comandos
+    siguientes. Debe decir "Todo correcto".
+
+git tag -a v1.0 -m "Entrega final MiniOni"
+    Con el equipo presente, después del commit final.
+
+python empaquetar_entrega.py
+    Crea MiniOni_entrega_v1.0.zip con el código de la etiqueta v1.0, lo
+    que haya en entrega\informe y entrega\evidencia, y los .pcap. Si
+    encuentra una clave o un archivo prohibido, borra el zip.

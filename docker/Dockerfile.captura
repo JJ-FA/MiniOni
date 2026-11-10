@@ -1,0 +1,12 @@
+# Herramienta de captura de tráfico (semana 5, S5-T1). No forma parte del laboratorio.
+# La construye y la usa solo: python laboratorio_docker.py capturar
+#
+# Es el único contenedor con NET_RAW y NET_ADMIN (excepción documentada en docs/LIMITES.md).
+# Usa la misma imagen base fijada por digest que el laboratorio (SSDF PW.4.1).
+
+ARG BASE=python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f
+FROM ${BASE}
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tcpdump \
+    && rm -rf /var/lib/apt/lists/*

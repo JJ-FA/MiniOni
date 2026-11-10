@@ -143,9 +143,28 @@
 - **El digest de la imagen no se actualiza solo.** Fijarlo evita cambios sin aviso,
   pero los parches de `python:3.14-slim` solo llegan si alguien repite el procedimiento
   de `SEMANA4_DOCKER.md` 4.3.
-- **El panel no muestra el avance detallado de la construcción.** La salida de Docker
-  se descarta para no llevar texto externo a la ventana; la primera construcción
-  puede tardar varios minutos con el mensaje de progreso fijo.
+- **El arranque solo muestra fases generales.** La terminal y el panel indican
+  «Fase N de 4» y descartan la salida de Docker, para no exponer comandos ni nombres
+  internos. La primera construcción puede tardar varios minutos en la misma fase.
+
+## Captura de tráfico (semana 5)
+
+- **Única excepción al endurecimiento.** `laboratorio_docker.py capturar` lanza el único
+  contenedor con `NET_RAW` y `NET_ADMIN`, unido a la red de un nodo con
+  `--network container:`. Sin esos permisos no se puede capturar. Corre como root dentro
+  del contenedor, con el resto de capacidades eliminadas, disco de solo lectura, sin
+  registros y durante 120 s como máximo. No forma parte del laboratorio: solo existe
+  mientras dura la captura.
+- **Las capturas contienen tráfico real del tramo.** Por eso solo se hacen a pedido y
+  con tráfico de prueba, no van a Git y se borran después de entregar. Si durante una
+  captura de `salida-web` alguien navegara, quedaría guardado.
+- **`capturas_wireshark/` queda dentro del proyecto**, como pide el plan. Si el proyecto
+  está en OneDrive, esos archivos se copian a la nube: solo contienen tráfico de prueba.
+- **La versión de `tcpdump` no está fijada.** La imagen base sí va por digest, pero
+  `apt` instala la versión vigente al construir. Es una herramienta de evidencia y no
+  participa en el laboratorio.
+- **El resumen automático busca frases, no palabras sueltas.** Una búsqueda de 3 bytes
+  daría falsos positivos en texto cifrado (`docs/WIRESHARK.md`, sección 4).
 
 ## Limitaciones del entorno
 

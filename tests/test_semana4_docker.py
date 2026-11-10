@@ -505,6 +505,24 @@ def test_iniciar_con_contrasena_la_entrega_a_cada_relay(laboratorio_simulado):
     assert construcciones == [(("build",), True, False)]   # el panel no vuelca la salida de Docker
 
 
+def test_el_progreso_son_fases_sin_detalles_internos(laboratorio_simulado):
+    avisos = []
+    laboratorio_docker.iniciar_con_contrasena("clave", avisar=avisos.append)
+    assert [a.split(":")[0] for a in avisos] == [f"Fase {n} de 4 en proceso" for n in (1, 2, 3)]
+    for aviso in avisos:
+        assert not re.search(r"docker|compose|imagen|python|entrada1|medio1|salida1|versi[oó]n|contrase", aviso, re.I)
+
+
+def test_la_terminal_no_vuelca_la_construccion_de_docker(laboratorio_simulado, monkeypatch, capsys):
+    monkeypatch.setattr(laboratorio_docker, "_pedir_y_comprobar_contrasena", lambda _c: "clave")
+    laboratorio_docker.iniciar()
+    assert [c for c in laboratorio_simulado["compose"] if c[0][0] == "build"] == [(("build",), True, False)]
+    progreso = capsys.readouterr().out.split("Siguiente paso")[0]
+    for numero in (1, 2, 3, 4):
+        assert f"Fase {numero} de 4 en proceso" in progreso
+    assert not re.search(r"entrada1|medio1|salida1|imagen|python", progreso)
+
+
 def test_contrasena_incorrecta_no_crea_ningun_contenedor(laboratorio_simulado, monkeypatch):
     def rechaza(*_a):
         raise ClaveInvalida("x")

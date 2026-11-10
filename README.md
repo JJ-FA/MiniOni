@@ -22,7 +22,12 @@ pip install -r requirements-dev.txt
 
 En Linux/macOS: `python3 -m venv .venv` y `source .venv/bin/activate`.
 
-## Probar lo que hay hasta ahora (semanas 1 a 3)
+**La primera vez, en este orden:** crea las claves ([Crear las claves y el directorio
+firmado](#crear-las-claves-y-el-directorio-firmado), con `MINIONI_CLAVES` fuera de la
+nube), ejecuta las pruebas y después abre el panel. Si clonaste el repositorio, activa
+también el hook que revisa secretos: `git config core.hooksPath hooks`.
+
+## Probar el proyecto
 
 ```powershell
 python -m pytest                # pruebas automáticas (fuzzing, 3 relays reales con TLS 1.3, proxy SOCKS5)
@@ -122,6 +127,38 @@ python cliente_proxy.py --directorio config/directorio.docker.json --entrada-via
 python laboratorio_docker.py detener
 ```
 
+## Captura de tráfico y paquete de entrega (semana 5)
+
+```powershell
+python laboratorio_docker.py capturar --tramo entrada-medio --segundos 20   # también medio-salida y salida-web
+python laboratorio_docker.py demo          # estado, pruebas y comandos para presentar
+python empaquetar_entrega.py               # MiniOni_entrega_v1.0.zip, verificado sin claves (requiere la etiqueta v1.0)
+```
+
+Qué mirar en cada captura: [docs/WIRESHARK.md](docs/WIRESHARK.md). El paquete toma el
+informe y la evidencia de la carpeta local `entrega/` (`informe/` y `evidencia/`), que
+no va a Git.
+
+## Demostración en 15 minutos
+
+La noche anterior: Docker Desktop abierto, directorio publicado con
+`laboratorio_docker.py preparar`, certificados vigentes, Firefox con el proxy en un
+perfil aparte y las capturas ya abiertas en Wireshark.
+
+| Min. | Qué se muestra | Comando o acción | Qué decir |
+|---|---|---|---|
+| 0-2 | Idea y arquitectura | Diagrama de [SEMANA4_DOCKER.md](docs/SEMANA4_DOCKER.md) | Tres saltos y redes separadas: nadie ve a la vez quién navega y adónde |
+| 2-4 | Cebolla | `python demo_capas.py` | Cada relay quita solo su capa (ChaCha20-Poly1305) |
+| 4-8 | Laboratorio y segmentación | `python laboratorio_docker.py iniciar` y luego `demo` | Sin root, solo lectura, sin capacidades ni registros; desde cada red solo se alcanza el siguiente nodo (ISO/IEC 27033) |
+| 8-10 | Navegación | `python cliente_proxy.py --directorio config/directorio.docker.json --entrada-via 127.0.0.1:9001` y Firefox → `http://web/` | El destino ve 10.10.9.11, no el equipo del cliente. Prueba la separación de funciones: todos los nodos están en este equipo, así que la IP pública no se oculta |
+| 10-12 | Wireshark | Capturas entrada → medio y salida → web | Dentro de la red solo hay TLS 1.3 de tamaño fijo; solo la salida ve HTTP |
+| 12-13 | Fallo cerrado | `docker pause minioni-medio1`, Firefox falla, `docker unpause minioni-medio1` | Si algo cae, no se sale directo |
+| 13-14 | Ataque al directorio | `python minioni_admin.py simular-ataque` | La firma Ed25519 detecta el cambio |
+| 14-15 | Sin registros | `docker logs minioni-salida1`; panel → «Verificar sin registros» | No queda nada que pueda delatar al usuario |
+
+**Plan B:** si Docker falla en vivo, usa el modo local (`panel.py`) y muestra las salidas
+guardadas de `probar` y los `.pcap` ya hechos.
+
 ## Revisión de seguridad del código
 
 | Comando | Qué revisa | Norma |
@@ -168,6 +205,7 @@ de OneDrive. Rotación de certificados y claves: [docs/ROTACION_CLAVES.md](docs/
 
 | Documento | Contenido |
 |---|---|
+| [docs/DOCUMENTACION_COMPLETA.md](docs/DOCUMENTACION_COMPLETA.md) | **Empieza aquí:** qué es, cómo funciona, estado, qué falta y uso paso a paso |
 | [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md) | Componentes, diagramas, límites de confianza, decisiones |
 | [docs/PROTOCOLO.md](docs/PROTOCOLO.md) | Formato de celdas, capas, handshake y directorio |
 | [docs/INVENTARIO_CRIPTOGRAFICO.md](docs/INVENTARIO_CRIPTOGRAFICO.md) | Cada clave y algoritmo: dónde vive, qué protege, cuánto dura; plan poscuántico |
@@ -179,9 +217,10 @@ de OneDrive. Rotación de certificados y claves: [docs/ROTACION_CLAVES.md](docs/
 | [docs/CLASE3_FALLOS_Y_CORRECCIONES.md](docs/CLASE3_FALLOS_Y_CORRECCIONES.md) | Los 11 fallos de la Clase 3: control, causa y corrección |
 | [docs/CLASE3_NVD.md](docs/CLASE3_NVD.md) | CVE del NVD que tocan a MiniOni, por control (03-11-2026) |
 | [docs/CLASE3_CODIFICACION_SEGURA.md](docs/CLASE3_CODIFICACION_SEGURA.md) | Investigación de los 4 controles (Clase 3): hallazgos, SAST, secretos |
-| [docs/TRASPASO_CLASE3_CLAUDE_CODE.md](docs/TRASPASO_CLASE3_CLAUDE_CODE.md) | Traspaso para Claude Code: reglas nuevas, estado y tareas T1-T7 antes de la Clase 4 |
 | [docs/SEMANA4_DOCKER.md](docs/SEMANA4_DOCKER.md) | Semana 4: redes segmentadas en Docker, endurecimiento, pruebas y evidencia |
-| [docs/TRASPASO_SEMANA4_CLAUDE_CODE.md](docs/TRASPASO_SEMANA4_CLAUDE_CODE.md) | Traspaso de la semana 4 para Claude Code: cambios, reglas 23-32 y tareas S4-T1 a S4-T5 |
+| [docs/WIRESHARK.md](docs/WIRESHARK.md) | Semana 5: cómo capturar cada tramo y qué se debe ver |
+| [docs/STRIDE.md](docs/STRIDE.md) | Modelo de amenazas final: control, archivo y prueba de cada amenaza |
+| [docs/historial](docs/historial) | Planes y traspasos ya cerrados (documentos de trabajo) |
 | [docs/PLAN_ENTREGA_SEMANA5.md](docs/PLAN_ENTREGA_SEMANA5.md) | Entrega final: qué debe tener la aplicación, Wireshark, informe, demostración y paquete |
 | [docs/TRAZABILIDAD.md](docs/TRAZABILIDAD.md) | Requisito → norma → código → prueba |
 
@@ -193,7 +232,7 @@ de OneDrive. Rotación de certificados y claves: [docs/ROTACION_CLAVES.md](docs/
 | 2 | Relays en red (asyncio + TLS 1.3), límites anti-DoS | ✅ |
 | 3 | Nodo de salida, proxy SOCKS5, fail-closed, conexión del navegador | ✅ |
 | 4 | Entorno Docker con redes segmentadas, contenedores endurecidos, pruebas de segmentación | ✅ |
-| 5 | Pruebas con Wireshark, documentación final e informe | ⏳ |
+| 5 | Pruebas con Wireshark, documentación final e informe | ⏳ Falta lo del equipo: conclusiones, ensayo y etiqueta `v1.0` |
 
 ## Normas
 
